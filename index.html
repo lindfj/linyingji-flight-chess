@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f7f2e8">
+  <title>云端飞行棋</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">FLIGHT CHESS</p>
+        <h1>云端飞行棋</h1>
+        <p class="subtitle">掷出好运，让小飞机先飞回自己的天空基地。</p>
+      </div>
+      <button class="icon-button" id="rulesButton" type="button" aria-label="查看规则">?</button>
+    </header>
+
+    <main class="game-layout">
+      <section class="board-card" aria-label="飞行棋棋盘">
+        <canvas id="gameBoard" width="820" height="820"></canvas>
+        <div id="winnerOverlay" class="winner-overlay" hidden>
+          <div class="winner-card">
+            <span class="winner-plane">✈</span>
+            <p id="winnerLabel">红队胜利</p>
+            <button id="playAgainButton" class="primary-button" type="button">再来一局</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="control-panel">
+        <section class="status-card">
+          <div class="turn-row">
+            <span id="turnDot" class="turn-dot"></span>
+            <div>
+              <span class="tiny-label">当前回合</span>
+              <strong id="turnLabel">红队</strong>
+            </div>
+            <span id="roundLabel" class="round-label">第 1 回合</span>
+          </div>
+
+          <div class="dice-zone">
+            <button id="diceButton" class="dice" type="button" aria-label="掷骰子">
+              <span id="diceFace" class="dice-face" aria-hidden="true"></span>
+            </button>
+            <div>
+              <strong id="actionTitle">轮到红队</strong>
+              <p id="actionHint">点击骰子开始飞行</p>
+            </div>
+          </div>
+
+          <button id="rollButton" class="primary-button roll-button" type="button">掷骰子</button>
+        </section>
+
+        <section class="players-card">
+          <div class="section-title">
+            <h2>飞行小队</h2>
+            <button id="newGameButton" class="text-button" type="button">重新开始</button>
+          </div>
+          <div id="playerList" class="player-list"></div>
+        </section>
+
+        <section class="log-card">
+          <div class="section-title">
+            <h2>飞行播报</h2>
+            <span class="live-dot">LIVE</span>
+          </div>
+          <ol id="gameLog" class="game-log" aria-live="polite"></ol>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="rulesDialog">
+    <form method="dialog" class="rules">
+      <button class="dialog-close" value="close" aria-label="关闭">×</button>
+      <p class="eyebrow">HOW TO PLAY</p>
+      <h2>飞行指南</h2>
+      <ul>
+        <li>掷到 <strong>6</strong> 才能让停机坪上的飞机起飞。</li>
+        <li>掷骰后，点击带光环的飞机进行移动。</li>
+        <li>落到对手飞机所在的位置，会把它撞回停机坪。</li>
+        <li>进入彩色终点跑道后，需要点数刚好才能抵达终点。</li>
+        <li>率先让全部 4 架飞机抵达终点的小队获胜。</li>
+      </ul>
+      <button class="primary-button" value="close">知道了</button>
+    </form>
+  </dialog>
+
+  <script src="game.js"></script>
+</body>
+</html>
