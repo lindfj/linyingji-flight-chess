@@ -29,11 +29,16 @@ const FINISH_DONE = 58;
 const SAFE_ABS = new Set([0, 13, 26, 39]);
 const FLY_START_PROGRESS = 8;
 const FLY_END_PROGRESS = 20;
+const ROUTE_CELL = 28;
+const ROUTE_HALF = ROUTE_CELL / 2;
+const ROUTE_DOT = 8;
+const FINISH_DOT = 13;
+const PLANE_RADIUS = 12;
 
 const players = [
   { name: "YJ队长", color: "#f1514f", light: "#ffb5ad", start: 0, icon: "Y" },
-  { name: "蓝翼", color: "#3b8de3", light: "#a9d4ff", start: 13, icon: "蓝" },
-  { name: "金色闪电", color: "#f4c538", light: "#ffe991", start: 26, icon: "金" },
+  { name: "蓝翼", color: "#137cc7", light: "#a9d4ff", start: 26, icon: "蓝" },
+  { name: "金色闪电", color: "#f4c538", light: "#ffe991", start: 13, icon: "金" },
   { name: "青空", color: "#33c884", light: "#9eefd0", start: 39, icon: "青" },
 ];
 
@@ -62,41 +67,41 @@ let animationFrameId = null;
 let toastTimer = null;
 
 function createBoardGeometry() {
-  const top = 86;
-  const right = 674;
-  const bottom = 674;
-  const left = 86;
-  const step = (right - left) / 13;
+  const innerLeft = 166;
+  const innerTop = 166;
+  const innerRight = 594;
+  const innerBottom = 594;
+  const nearLeft = 190;
+  const nearTop = 190;
+  const nearRight = 570;
+  const nearBottom = 570;
+  const step = (nearRight - nearLeft) / 12;
 
   const route = [];
-  for (let i = 0; i <= 13; i += 1) route.push({ x: right - step * i, y: bottom });
-  for (let i = 1; i <= 13; i += 1) route.push({ x: left, y: bottom - step * i });
-  for (let i = 1; i <= 13; i += 1) route.push({ x: left + step * i, y: top });
-  for (let i = 1; i <= 12; i += 1) route.push({ x: right, y: top + step * i });
+  for (let i = 0; i < 13; i += 1) route.push({ x: nearRight - step * i, y: innerBottom });
+  for (let i = 0; i < 13; i += 1) route.push({ x: innerLeft, y: nearBottom - step * i });
+  for (let i = 0; i < 13; i += 1) route.push({ x: nearLeft + step * i, y: innerTop });
+  for (let i = 0; i < 13; i += 1) route.push({ x: innerRight, y: nearTop + step * i });
   board.route = route;
 
   const homeCenters = [
-    { x: 615, y: 615 },
-    { x: 145, y: 145 },
-    { x: 145, y: 615 },
-    { x: 615, y: 145 },
+    { x: 645, y: 645 },
+    { x: 115, y: 115 },
+    { x: 115, y: 645 },
+    { x: 645, y: 115 },
   ];
-  const offsets = [{ x: -40, y: -40 }, { x: 40, y: -40 }, { x: -40, y: 40 }, { x: 40, y: 40 }];
+  const offsets = [{ x: -28, y: -28 }, { x: 28, y: -28 }, { x: -28, y: 28 }, { x: 28, y: 28 }];
   board.homes = homeCenters.map(center => offsets.map(offset => ({
     x: center.x + offset.x,
     y: center.y + offset.y,
   })));
 
-  board.finishRoutes = players.map(player => {
-    const entry = board.route[(player.start + ROUTE_LENGTH - 1) % ROUTE_LENGTH];
-    return Array.from({ length: 6 }, (_, i) => {
-      const ratio = (i + 1) / 7;
-      return {
-        x: entry.x + (board.center.x - entry.x) * ratio,
-        y: entry.y + (board.center.y - entry.y) * ratio,
-      };
-    });
-  });
+  board.finishRoutes = [
+    Array.from({ length: 6 }, (_, i) => ({ x: 594 - i * 36, y: 380 })),
+    Array.from({ length: 6 }, (_, i) => ({ x: 166 + i * 36, y: 380 })),
+    Array.from({ length: 6 }, (_, i) => ({ x: 380, y: 594 - i * 36 })),
+    Array.from({ length: 6 }, (_, i) => ({ x: 380, y: 166 + i * 36 })),
+  ];
 }
 
 function resetGame(shouldSync = true) {
@@ -128,7 +133,7 @@ function resetGame(shouldSync = true) {
 }
 
 function getRouteColor(absIndex) {
-  return absIndex % 4;
+  return [0, 2, 1, 3][absIndex % 4];
 }
 
 function getAbsoluteProgress(planeProgress, playerIndex) {
@@ -174,16 +179,16 @@ function drawBackground() {
 
 function drawHomeAreas() {
   const homes = [
-    { x: 522, y: 522 },
-    { x: 38, y: 38 },
-    { x: 38, y: 522 },
-    { x: 522, y: 38 },
+    { x: 585, y: 585 },
+    { x: 55, y: 55 },
+    { x: 55, y: 585 },
+    { x: 585, y: 55 },
   ];
   homes.forEach((home, index) => {
-    roundRect(home.x, home.y, 200, 200, 4, "#fff", "#111");
+    roundRect(home.x, home.y, 120, 120, 3, "#fff", "#111");
     board.homes[index].forEach(point => {
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 28, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
       ctx.fillStyle = players[index].color;
       ctx.fill();
       ctx.lineWidth = 3;
@@ -193,21 +198,56 @@ function drawHomeAreas() {
   });
 }
 
+function drawTrackRibbons() {
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = ROUTE_CELL + 4;
+  ctx.globalAlpha = .88;
+
+  for (let index = 0; index < board.route.length; index += 1) {
+    const current = board.route[index];
+    const next = board.route[(index + 1) % board.route.length];
+    const colorOwner = getRouteColor(index);
+    ctx.beginPath();
+    ctx.moveTo(current.x, current.y);
+    ctx.lineTo(next.x, next.y);
+    ctx.strokeStyle = players[colorOwner].color;
+    ctx.stroke();
+  }
+
+  ctx.lineWidth = FINISH_DOT * 2 + 5;
+  board.finishRoutes.forEach((route, playerIndex) => {
+    const path = [...route, board.center];
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    path.slice(1).forEach(point => ctx.lineTo(point.x, point.y));
+    ctx.strokeStyle = players[playerIndex].color;
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
 function drawRoute() {
   board.route.forEach((point, index) => {
     const colorOwner = getRouteColor(index);
-    const isSafe = SAFE_ABS.has(index);
-    roundRect(point.x - 22, point.y - 22, 44, 44, 6, players[colorOwner].color, "#06334e");
+    const isTriangle = SAFE_ABS.has(index) || isFlyEndpoint(index, colorOwner);
+    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 5, "#fff", "#0b2b40");
+    if (isTriangle) {
+      drawTriangleCell(point, players[colorOwner].color, index);
+    } else {
+      roundRect(point.x - 11, point.y - 11, 22, 22, 4, players[colorOwner].color, "rgba(0,0,0,.18)");
+    }
     ctx.beginPath();
-    ctx.arc(point.x, point.y, isSafe ? 14 : 11, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, SAFE_ABS.has(index) ? 10 : ROUTE_DOT, 0, Math.PI * 2);
     ctx.fillStyle = "#fffbd1";
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = isSafe ? "#fff" : "rgba(0,0,0,.18)";
+    ctx.strokeStyle = SAFE_ABS.has(index) ? "#fff" : "rgba(0,0,0,.18)";
     ctx.stroke();
-    if (isSafe) {
+    if (SAFE_ABS.has(index)) {
       ctx.fillStyle = players[colorOwner].color;
-      ctx.font = "bold 14px sans-serif";
+      ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("★", point.x, point.y + 1);
@@ -217,65 +257,107 @@ function drawRoute() {
   board.finishRoutes.forEach((route, playerIndex) => {
     route.forEach((point, index) => {
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, FINISH_DOT, 0, Math.PI * 2);
       ctx.fillStyle = index === route.length - 1 ? "#fffbd1" : players[playerIndex].light;
       ctx.fill();
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 3;
       ctx.strokeStyle = players[playerIndex].color;
       ctx.stroke();
     });
   });
 
-  drawFlyLines();
 }
 
-function drawFlyLines() {
+function isFlyEndpoint(absIndex, colorOwner) {
+  return players.some((player, playerIndex) =>
+    playerIndex === colorOwner &&
+    (getAbsoluteProgress(FLY_START_PROGRESS, playerIndex) === absIndex ||
+      getAbsoluteProgress(FLY_END_PROGRESS, playerIndex) === absIndex)
+  );
+}
+
+function drawTriangleCell(point, color, index) {
+  const direction = index < 13 ? "up" : index < 26 ? "left" : index < 39 ? "down" : "right";
+  ctx.beginPath();
+  if (direction === "up") {
+    ctx.moveTo(point.x - 12, point.y + 12);
+    ctx.lineTo(point.x + 12, point.y + 12);
+    ctx.lineTo(point.x + 12, point.y - 12);
+  } else if (direction === "left") {
+    ctx.moveTo(point.x + 12, point.y - 12);
+    ctx.lineTo(point.x + 12, point.y + 12);
+    ctx.lineTo(point.x - 12, point.y + 12);
+  } else if (direction === "down") {
+    ctx.moveTo(point.x + 12, point.y - 12);
+    ctx.lineTo(point.x - 12, point.y - 12);
+    ctx.lineTo(point.x - 12, point.y + 12);
+  } else {
+    ctx.moveTo(point.x - 12, point.y + 12);
+    ctx.lineTo(point.x - 12, point.y - 12);
+    ctx.lineTo(point.x + 12, point.y - 12);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawFlyMarkers() {
   players.forEach((player, playerIndex) => {
-    const start = board.route[getAbsoluteProgress(FLY_START_PROGRESS, playerIndex)];
-    const end = board.route[getAbsoluteProgress(FLY_END_PROGRESS, playerIndex)];
-    ctx.save();
-    ctx.setLineDash([10, 9]);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = player.color;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = player.color;
-    ctx.font = "bold 18px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("➜", (start.x + end.x) / 2, (start.y + end.y) / 2);
-    ctx.restore();
+    [FLY_START_PROGRESS, FLY_END_PROGRESS].forEach(progress => {
+      const point = board.route[getAbsoluteProgress(progress, playerIndex)];
+      ctx.save();
+      ctx.translate(point.x, point.y);
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.moveTo(-7, 7);
+      ctx.lineTo(9, 0);
+      ctx.lineTo(-7, -7);
+      ctx.lineTo(-3, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    });
   });
 }
 
 function drawCenter() {
   const { x, y } = board.center;
-  players.forEach((player, index) => {
-    const angleA = -Math.PI / 2 + index * Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.arc(x, y, 82, angleA, angleA + Math.PI / 2);
-    ctx.closePath();
-    ctx.fillStyle = player.color;
-    ctx.fill();
-    ctx.strokeStyle = "white";
-    ctx.stroke();
-  });
+  drawCenterArrow(x, y, 3, "up");
+  drawCenterArrow(x, y, 0, "right");
+  drawCenterArrow(x, y, 2, "down");
+  drawCenterArrow(x, y, 1, "left");
   ctx.beginPath();
-  ctx.arc(x, y, 31, 0, Math.PI * 2);
+  ctx.arc(x, y, 24, 0, Math.PI * 2);
   ctx.fillStyle = "#fffbd1";
   ctx.fill();
   ctx.strokeStyle = "#0d4264";
   ctx.lineWidth = 3;
   ctx.stroke();
   ctx.fillStyle = "#0874b7";
-  ctx.font = "bold 21px sans-serif";
+  ctx.font = "bold 17px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("YJ", x, y);
+}
+
+function drawCenterArrow(x, y, playerIndex, direction) {
+  const color = players[playerIndex].color;
+  ctx.beginPath();
+  if (direction === "up") {
+    ctx.moveTo(x, y - 55); ctx.lineTo(x + 34, y - 22); ctx.lineTo(x + 15, y - 22); ctx.lineTo(x + 15, y); ctx.lineTo(x - 15, y); ctx.lineTo(x - 15, y - 22); ctx.lineTo(x - 34, y - 22);
+  } else if (direction === "right") {
+    ctx.moveTo(x + 55, y); ctx.lineTo(x + 22, y + 34); ctx.lineTo(x + 22, y + 15); ctx.lineTo(x, y + 15); ctx.lineTo(x, y - 15); ctx.lineTo(x + 22, y - 15); ctx.lineTo(x + 22, y - 34);
+  } else if (direction === "down") {
+    ctx.moveTo(x, y + 55); ctx.lineTo(x - 34, y + 22); ctx.lineTo(x - 15, y + 22); ctx.lineTo(x - 15, y); ctx.lineTo(x + 15, y); ctx.lineTo(x + 15, y + 22); ctx.lineTo(x + 34, y + 22);
+  } else {
+    ctx.moveTo(x - 55, y); ctx.lineTo(x - 22, y - 34); ctx.lineTo(x - 22, y - 15); ctx.lineTo(x, y - 15); ctx.lineTo(x, y + 15); ctx.lineTo(x - 22, y + 15); ctx.lineTo(x - 22, y + 34);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
 }
 
 function isPlaneMovable(plane, dice = state.dice) {
@@ -290,29 +372,43 @@ function drawPlane(plane) {
   const selectable = state.rolled && plane.playerIndex === state.currentPlayer && isPlaneMovable(plane);
   if (selectable) {
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 32 + Math.sin(Date.now() / 160) * 4, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, 22 + Math.sin(Date.now() / 160) * 3, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(255,255,255,.62)";
     ctx.fill();
   }
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.rotate([-Math.PI / 2, Math.PI, Math.PI / 2, 0][plane.playerIndex]);
   ctx.beginPath();
-  ctx.arc(pos.x, pos.y, 17, 0, Math.PI * 2);
+  ctx.moveTo(0, -18);
+  ctx.quadraticCurveTo(7, -8, 5, 8);
+  ctx.lineTo(15, 17);
+  ctx.lineTo(6, 15);
+  ctx.lineTo(0, 10);
+  ctx.lineTo(-6, 15);
+  ctx.lineTo(-15, 17);
+  ctx.lineTo(-5, 8);
+  ctx.quadraticCurveTo(-7, -8, 0, -18);
+  ctx.closePath();
   ctx.fillStyle = player.color;
   ctx.fill();
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2.5;
   ctx.strokeStyle = "white";
   ctx.stroke();
-  ctx.fillStyle = "white";
-  ctx.font = "bold 14px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("✈", pos.x, pos.y);
+  ctx.beginPath();
+  ctx.arc(0, -7, 3.2, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,.85)";
+  ctx.fill();
+  ctx.restore();
 }
 
 function draw() {
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   drawBackground();
   drawHomeAreas();
+  drawTrackRibbons();
   drawRoute();
+  drawFlyMarkers();
   drawCenter();
   state.planes.flat().forEach(drawPlane);
   if (state.rolled && state.winner === null) animationFrameId = requestAnimationFrame(draw);
@@ -497,19 +593,23 @@ function trySameColorJump(plane) {
 }
 
 function tryFlyLine(plane) {
-  if (plane.progress !== FLY_START_PROGRESS) return false;
-  const endAbs = getAbsoluteProgress(FLY_END_PROGRESS, plane.playerIndex);
+  if (plane.progress !== FLY_START_PROGRESS && plane.progress !== FLY_END_PROGRESS) return false;
+  const from = plane.progress;
+  const to = from === FLY_START_PROGRESS ? FLY_END_PROGRESS : FLY_START_PROGRESS;
+  const endAbs = getAbsoluteProgress(to, plane.playerIndex);
   const endEnemies = groupByPlayer(getPlanesAtRouteAbs(endAbs).filter(item => item.playerIndex !== plane.playerIndex));
   if (endEnemies.some(group => group.planes.length >= 2)) {
     addLog(`${players[plane.playerIndex].name} 飞棋终点有敌方叠子，无法飞行。`, plane.playerIndex, false);
     return false;
   }
-  for (let progress = FLY_START_PROGRESS + 1; progress <= FLY_END_PROGRESS; progress += 1) {
+  const begin = Math.min(from, to) + 1;
+  const finish = Math.max(from, to);
+  for (let progress = begin; progress <= finish; progress += 1) {
     const abs = getAbsoluteProgress(progress, plane.playerIndex);
     hitAllEnemiesAt(abs, plane.playerIndex, "飞行途中击落了");
   }
-  plane.progress = FLY_END_PROGRESS;
-  addLog(`${players[plane.playerIndex].name} 沿虚线飞行到远处同色格。`, plane.playerIndex, false);
+  plane.progress = to;
+  addLog(`${players[plane.playerIndex].name} 沿虚线双向箭头飞到另一端同色三角格。`, plane.playerIndex, false);
   return true;
 }
 
@@ -641,7 +741,7 @@ function findClickedPlane(event) {
   const y = (event.clientY - rect.top) * canvas.height / rect.height;
   return state.planes[state.currentPlayer].find(plane => {
     const pos = getPlanePosition(plane);
-    return isPlaneMovable(plane) && Math.hypot(x - pos.x, y - pos.y) <= 39;
+    return isPlaneMovable(plane) && Math.hypot(x - pos.x, y - pos.y) <= 28;
   });
 }
 

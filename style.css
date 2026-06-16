@@ -120,10 +120,10 @@ button { cursor: pointer; }
 .player-seat.active {
   box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 20px var(--seat-color);
 }
-.seat-top-left { top: 11px; left: 12px; }
-.seat-top-right { top: 11px; right: 12px; }
-.seat-bottom-left { bottom: 98px; left: 12px; }
-.seat-bottom-right { bottom: 98px; right: 12px; }
+#seat1 { top: 11px; left: 12px; }
+#seat3 { top: 11px; right: 12px; }
+#seat2 { bottom: 88px; left: 12px; }
+#seat0 { bottom: 88px; right: 12px; }
 
 .avatar {
   grid-row: span 2;
@@ -164,8 +164,8 @@ button { cursor: pointer; }
   width: calc(100% - 24px);
   margin: 0 auto;
   overflow: hidden;
-  border: 4px solid #063e74;
-  border-radius: 15px;
+  border: 6px solid #063e74;
+  border-radius: 22px;
   background: #07568f;
   box-shadow: 0 13px 28px rgba(0, 25, 58, .35), inset 0 0 0 1px rgba(255,255,255,.12);
 }
@@ -328,12 +328,13 @@ dialog::backdrop { background: rgba(0,25,51,.7); backdrop-filter: blur(4px); }
   .app { width: 100%; }
   .brand small, .room-bar strong { display: none; }
   .game-stage { padding-top: 91px; }
-  .player-seat { width: 118px; grid-template-columns: 39px 1fr; padding: 6px; }
-  .avatar { width: 39px; height: 39px; font-size: 19px; }
-  .seat-name { font-size: 11px; }
+  .player-seat { width: 104px; grid-template-columns: 34px 1fr; padding: 5px; border-width: 2px; }
+  .avatar { width: 34px; height: 34px; font-size: 17px; }
+  .seat-name { font-size: 10px; }
+  .seat-score { font-size: 9px; }
   .turn-banner { top: 26px; width: 145px; }
   .turn-banner strong { font-size: 12px; }
-  .seat-bottom-left, .seat-bottom-right { bottom: 87px; }
+  #seat0, #seat2 { bottom: 75px; }
   .game-console { min-height: 72px; padding: 8px 13px; }
   .dice-button { width: 52px; height: 52px; }
   .dice-face { width: 39px; height: 39px; }
