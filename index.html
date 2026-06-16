@@ -2,90 +2,115 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f7f2e8">
-  <title>云端飞行棋</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#087ac2">
+  <title>YJ飞行器</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="page-shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">FLIGHT CHESS</p>
-        <h1>云端飞行棋</h1>
-        <p class="subtitle">掷出好运，让小飞机先飞回自己的天空基地。</p>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-plane">✈</span>
+        <div><strong>YJ飞行器</strong><small>经典四人飞行棋</small></div>
       </div>
-      <button class="icon-button" id="rulesButton" type="button" aria-label="查看规则">?</button>
+      <nav class="top-actions">
+        <button id="soundButton" class="square-button" type="button" title="音效">🔊</button>
+        <button id="newGameButton" class="square-button" type="button" title="重新开始">↻</button>
+        <button id="rulesButton" class="square-button" type="button" title="规则">?</button>
+      </nav>
     </header>
 
-    <main class="game-layout">
-      <section class="board-card" aria-label="飞行棋棋盘">
-        <canvas id="gameBoard" width="820" height="820"></canvas>
+    <section class="room-bar">
+      <span class="online-dot"></span>
+      <strong>好友房</strong>
+      <span id="roomCode">房间 YJ-2026</span>
+      <button id="copyRoomButton" type="button">复制房间号</button>
+    </section>
+
+    <section class="game-stage">
+      <div id="seat0" class="player-seat seat-top-left"></div>
+      <div id="seat1" class="player-seat seat-top-right"></div>
+      <div id="seat2" class="player-seat seat-bottom-right"></div>
+      <div id="seat3" class="player-seat seat-bottom-left"></div>
+
+      <div class="turn-banner">
+        <strong id="actionTitle">轮到 YJ队长</strong>
+        <span id="actionHint">点击骰子开始</span>
+      </div>
+
+      <div class="board-wrap">
+        <canvas id="gameBoard" width="760" height="760" aria-label="YJ飞行器棋盘"></canvas>
+        <div id="diceToast" class="dice-toast" hidden>
+          <span id="toastDice" class="mini-dice">⚄</span>
+          <strong id="toastText">轮到你了</strong>
+        </div>
         <div id="winnerOverlay" class="winner-overlay" hidden>
           <div class="winner-card">
-            <span class="winner-plane">✈</span>
-            <p id="winnerLabel">红队胜利</p>
-            <button id="playAgainButton" class="primary-button" type="button">再来一局</button>
+            <span>🏆</span>
+            <h2 id="winnerLabel">红队胜利</h2>
+            <button id="playAgainButton" type="button">再来一局</button>
           </div>
         </div>
+      </div>
+
+      <section class="game-console">
+        <button id="diceButton" class="dice-button" type="button" aria-label="掷骰子">
+          <span id="diceFace" class="dice-face"></span>
+        </button>
+        <div class="turn-copy">
+          <small id="roundLabel">第 1 回合</small>
+          <strong id="turnLabel">YJ队长</strong>
+        </div>
+        <button id="rollButton" class="roll-button" type="button">掷骰子</button>
       </section>
+    </section>
 
-      <aside class="control-panel">
-        <section class="status-card">
-          <div class="turn-row">
-            <span id="turnDot" class="turn-dot"></span>
-            <div>
-              <span class="tiny-label">当前回合</span>
-              <strong id="turnLabel">红队</strong>
-            </div>
-            <span id="roundLabel" class="round-label">第 1 回合</span>
-          </div>
+    <section class="social-panel">
+      <div class="tabs">
+        <button class="tab active" data-panel="chatPanel" type="button">聊天</button>
+        <button class="tab" data-panel="logPanel" type="button">战况</button>
+        <button class="tab" data-panel="playersPanel" type="button">玩家</button>
+      </div>
 
-          <div class="dice-zone">
-            <button id="diceButton" class="dice" type="button" aria-label="掷骰子">
-              <span id="diceFace" class="dice-face" aria-hidden="true"></span>
-            </button>
-            <div>
-              <strong id="actionTitle">轮到红队</strong>
-              <p id="actionHint">点击骰子开始飞行</p>
-            </div>
-          </div>
+      <div id="chatPanel" class="panel active">
+        <div id="chatList" class="message-list"></div>
+        <form id="chatForm" class="chat-form">
+          <input id="chatInput" maxlength="48" autocomplete="off" placeholder="说点什么，给队友加油…">
+          <button type="submit">发送</button>
+        </form>
+        <div class="quick-chat">
+          <button type="button">该我起飞了！</button>
+          <button type="button">漂亮！</button>
+          <button type="button">等我追上来</button>
+        </div>
+      </div>
 
-          <button id="rollButton" class="primary-button roll-button" type="button">掷骰子</button>
-        </section>
+      <div id="logPanel" class="panel">
+        <ol id="gameLog" class="game-log"></ol>
+      </div>
 
-        <section class="players-card">
-          <div class="section-title">
-            <h2>飞行小队</h2>
-            <button id="newGameButton" class="text-button" type="button">重新开始</button>
-          </div>
-          <div id="playerList" class="player-list"></div>
-        </section>
-
-        <section class="log-card">
-          <div class="section-title">
-            <h2>飞行播报</h2>
-            <span class="live-dot">LIVE</span>
-          </div>
-          <ol id="gameLog" class="game-log" aria-live="polite"></ol>
-        </section>
-      </aside>
-    </main>
-  </div>
+      <div id="playersPanel" class="panel">
+        <p class="edit-tip">点击昵称即可修改。本版本支持同屏四人和同浏览器多标签同步。</p>
+        <div id="playerList" class="player-list"></div>
+      </div>
+    </section>
+  </main>
 
   <dialog id="rulesDialog">
-    <form method="dialog" class="rules">
-      <button class="dialog-close" value="close" aria-label="关闭">×</button>
-      <p class="eyebrow">HOW TO PLAY</p>
-      <h2>飞行指南</h2>
+    <form method="dialog" class="dialog-card">
+      <button class="dialog-close" value="close">×</button>
+      <span class="dialog-plane">✈</span>
+      <h2>YJ飞行器玩法</h2>
       <ul>
-        <li>掷到 <strong>6</strong> 才能让停机坪上的飞机起飞。</li>
-        <li>掷骰后，点击带光环的飞机进行移动。</li>
-        <li>落到对手飞机所在的位置，会把它撞回停机坪。</li>
-        <li>进入彩色终点跑道后，需要点数刚好才能抵达终点。</li>
-        <li>率先让全部 4 架飞机抵达终点的小队获胜。</li>
+        <li>开局会自动掷骰决定先手，点数最大者先走。</li>
+        <li>只有掷到 6，机场里的飞机才能进入同色起飞点。</li>
+        <li>连续掷出 6 可以继续行动；连续三次 6 会让本方场上飞机退回机场。</li>
+        <li>落到敌方单架飞机会撞回机场；敌方叠子会阻挡或同归于尽。</li>
+        <li>落到同色格可跳到下一同色格，落到虚线起点可飞到远处同色格。</li>
+        <li>进入终点通道后，点数过多会反向退回；4 架全部进中心即获胜。</li>
       </ul>
-      <button class="primary-button" value="close">知道了</button>
+      <button class="dialog-confirm" value="close">开始游戏</button>
     </form>
   </dialog>
 

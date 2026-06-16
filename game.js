@@ -1,109 +1,153 @@
 const canvas = document.getElementById("gameBoard");
 const ctx = canvas.getContext("2d");
+const channel = "BroadcastChannel" in window ? new BroadcastChannel("yj-flight-chess") : null;
 
 const ui = {
-  turnDot: document.getElementById("turnDot"),
-  turnLabel: document.getElementById("turnLabel"),
+  actionTitle: document.getElementById("actionTitle"),
+  actionHint: document.getElementById("actionHint"),
   roundLabel: document.getElementById("roundLabel"),
+  turnLabel: document.getElementById("turnLabel"),
   diceButton: document.getElementById("diceButton"),
   diceFace: document.getElementById("diceFace"),
   rollButton: document.getElementById("rollButton"),
-  actionTitle: document.getElementById("actionTitle"),
-  actionHint: document.getElementById("actionHint"),
-  playerList: document.getElementById("playerList"),
-  gameLog: document.getElementById("gameLog"),
-  newGameButton: document.getElementById("newGameButton"),
-  rulesButton: document.getElementById("rulesButton"),
-  rulesDialog: document.getElementById("rulesDialog"),
+  diceToast: document.getElementById("diceToast"),
+  toastDice: document.getElementById("toastDice"),
+  toastText: document.getElementById("toastText"),
   winnerOverlay: document.getElementById("winnerOverlay"),
   winnerLabel: document.getElementById("winnerLabel"),
-  playAgainButton: document.getElementById("playAgainButton"),
+  playerList: document.getElementById("playerList"),
+  gameLog: document.getElementById("gameLog"),
+  chatList: document.getElementById("chatList"),
+  chatForm: document.getElementById("chatForm"),
+  chatInput: document.getElementById("chatInput"),
+  rulesDialog: document.getElementById("rulesDialog"),
 };
 
+const ROUTE_LENGTH = 52;
+const FINISH_START = 52;
+const FINISH_DONE = 58;
+const SAFE_ABS = new Set([0, 13, 26, 39]);
+const FLY_START_PROGRESS = 8;
+const FLY_END_PROGRESS = 20;
+
 const players = [
-  { name: "红队", color: "#ed5a5a", light: "#ffd8d4", start: 0 },
-  { name: "蓝队", color: "#4186e6", light: "#d7e8ff", start: 10 },
-  { name: "黄队", color: "#f4bd3c", light: "#fff0b8", start: 20 },
-  { name: "绿队", color: "#45a879", light: "#d4f1df", start: 30 },
+  { name: "YJ队长", color: "#f1514f", light: "#ffb5ad", start: 0, icon: "Y" },
+  { name: "蓝翼", color: "#3b8de3", light: "#a9d4ff", start: 13, icon: "蓝" },
+  { name: "金色闪电", color: "#f4c538", light: "#ffe991", start: 26, icon: "金" },
+  { name: "青空", color: "#33c884", light: "#9eefd0", start: 39, icon: "青" },
 ];
 
 const state = {
   currentPlayer: 0,
+  activePlayers: [0, 1, 2, 3],
   dice: 1,
   rolled: false,
   rolling: false,
   round: 1,
   winner: null,
+  sixStreaks: [0, 0, 0, 0],
   planes: [],
   logs: [],
+  chats: [],
 };
 
-let animationFrameId = null;
-
 const board = {
-  center: { x: 410, y: 410 },
+  center: { x: 380, y: 380 },
   route: [],
   homes: [],
   finishRoutes: [],
 };
 
-function createBoardGeometry() {
-  const cx = board.center.x;
-  const cy = board.center.y;
-  const radius = 286;
+let animationFrameId = null;
+let toastTimer = null;
 
-  board.route = Array.from({ length: 40 }, (_, i) => {
-    const angle = -Math.PI / 2 + (Math.PI * 2 * i) / 40;
-    return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
-  });
+function createBoardGeometry() {
+  const top = 86;
+  const right = 674;
+  const bottom = 674;
+  const left = 86;
+  const step = (right - left) / 13;
+
+  const route = [];
+  for (let i = 0; i <= 13; i += 1) route.push({ x: right - step * i, y: bottom });
+  for (let i = 1; i <= 13; i += 1) route.push({ x: left, y: bottom - step * i });
+  for (let i = 1; i <= 13; i += 1) route.push({ x: left + step * i, y: top });
+  for (let i = 1; i <= 12; i += 1) route.push({ x: right, y: top + step * i });
+  board.route = route;
 
   const homeCenters = [
-    { x: 160, y: 160 },
-    { x: 660, y: 160 },
-    { x: 660, y: 660 },
-    { x: 160, y: 660 },
+    { x: 615, y: 615 },
+    { x: 145, y: 145 },
+    { x: 145, y: 615 },
+    { x: 615, y: 145 },
   ];
-  const offsets = [
-    { x: -45, y: -45 }, { x: 45, y: -45 },
-    { x: -45, y: 45 }, { x: 45, y: 45 },
-  ];
+  const offsets = [{ x: -40, y: -40 }, { x: 40, y: -40 }, { x: -40, y: 40 }, { x: 40, y: 40 }];
+  board.homes = homeCenters.map(center => offsets.map(offset => ({
+    x: center.x + offset.x,
+    y: center.y + offset.y,
+  })));
 
-  board.homes = homeCenters.map((home) =>
-    offsets.map((offset) => ({ x: home.x + offset.x, y: home.y + offset.y }))
-  );
-
-  board.finishRoutes = players.map((player) => {
-    const entry = board.route[(player.start + 39) % 40];
+  board.finishRoutes = players.map(player => {
+    const entry = board.route[(player.start + ROUTE_LENGTH - 1) % ROUTE_LENGTH];
     return Array.from({ length: 6 }, (_, i) => {
       const ratio = (i + 1) / 7;
       return {
-        x: entry.x + (cx - entry.x) * ratio,
-        y: entry.y + (cy - entry.y) * ratio,
+        x: entry.x + (board.center.x - entry.x) * ratio,
+        y: entry.y + (board.center.y - entry.y) * ratio,
       };
     });
   });
 }
 
-function resetGame() {
-  state.currentPlayer = 0;
-  state.dice = 1;
-  state.rolled = false;
-  state.rolling = false;
-  state.round = 1;
-  state.winner = null;
-  state.logs = [];
-  state.planes = players.map((_, playerIndex) =>
-    Array.from({ length: 4 }, (_, planeIndex) => ({
+function resetGame(shouldSync = true) {
+  const openerRolls = players.map(() => 1 + Math.floor(Math.random() * 6));
+  const first = openerRolls.indexOf(Math.max(...openerRolls));
+  Object.assign(state, {
+    currentPlayer: first,
+    dice: 1,
+    rolled: false,
+    rolling: false,
+    round: 1,
+    winner: null,
+    sixStreaks: [0, 0, 0, 0],
+    planes: players.map((_, playerIndex) => Array.from({ length: 4 }, (_, planeIndex) => ({
       playerIndex,
       planeIndex,
       progress: -1,
-    }))
-  );
+    }))),
+    logs: [],
+    chats: state.chats || [],
+  });
   ui.winnerOverlay.hidden = true;
-  addLog("游戏开始，红队率先掷骰子。", 0);
+  addLog(`先手赛：${players.map((p, i) => `${p.name}${openerRolls[i]}点`).join("，")}。`, first, false);
+  addLog(`${players[first].name} 点数最大，率先开局。`, first, false);
   renderDice(1);
   updateUI();
   draw();
+  if (shouldSync) syncState();
+}
+
+function getRouteColor(absIndex) {
+  return absIndex % 4;
+}
+
+function getAbsoluteProgress(planeProgress, playerIndex) {
+  return (players[playerIndex].start + planeProgress) % ROUTE_LENGTH;
+}
+
+function getPlanePosition(plane) {
+  if (plane.progress === -1) return board.homes[plane.playerIndex][plane.planeIndex];
+  if (plane.progress >= FINISH_DONE) {
+    const angle = Math.PI * 2 * plane.planeIndex / 4 - Math.PI / 2;
+    return {
+      x: board.center.x + Math.cos(angle) * 23,
+      y: board.center.y + Math.sin(angle) * 23,
+    };
+  }
+  if (plane.progress >= FINISH_START) {
+    return board.finishRoutes[plane.playerIndex][plane.progress - FINISH_START];
+  }
+  return board.route[getAbsoluteProgress(plane.progress, plane.playerIndex)];
 }
 
 function roundRect(x, y, width, height, radius, fill, stroke) {
@@ -120,47 +164,30 @@ function roundRect(x, y, width, height, radius, fill, stroke) {
 }
 
 function drawBackground() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#fbf8f0";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.save();
-  ctx.globalAlpha = 0.55;
-  for (let i = 0; i < 22; i += 1) {
-    const x = (i * 173) % 820;
-    const y = (i * 97) % 820;
-    ctx.beginPath();
-    ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
-    ctx.fillStyle = "#dfd8c8";
-    ctx.fill();
-  }
-  ctx.restore();
+  const gradient = ctx.createLinearGradient(0, 0, 760, 760);
+  gradient.addColorStop(0, "#f8fdff");
+  gradient.addColorStop(.52, "#eaf8fd");
+  gradient.addColorStop(1, "#d8f0fa");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 760, 760);
 }
 
 function drawHomeAreas() {
   const homes = [
-    { x: 58, y: 58 },
-    { x: 562, y: 58 },
-    { x: 562, y: 562 },
-    { x: 58, y: 562 },
+    { x: 522, y: 522 },
+    { x: 38, y: 38 },
+    { x: 38, y: 522 },
+    { x: 522, y: 38 },
   ];
-
   homes.forEach((home, index) => {
-    roundRect(home.x, home.y, 200, 200, 35, players[index].light);
-    roundRect(home.x + 21, home.y + 21, 158, 158, 27, "rgba(255,255,255,0.65)");
-
-    ctx.fillStyle = players[index].color;
-    ctx.font = "700 15px Microsoft YaHei";
-    ctx.textAlign = "center";
-    ctx.fillText(players[index].name, home.x + 100, home.y + 32);
-
-    board.homes[index].forEach((point) => {
+    roundRect(home.x, home.y, 200, 200, 4, "#fff", "#111");
+    board.homes[index].forEach(point => {
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 27, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,255,0.72)";
+      ctx.arc(point.x, point.y, 28, 0, Math.PI * 2);
+      ctx.fillStyle = players[index].color;
       ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = players[index].color;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#0b2b40";
       ctx.stroke();
     });
   });
@@ -168,21 +195,22 @@ function drawHomeAreas() {
 
 function drawRoute() {
   board.route.forEach((point, index) => {
-    const owner = Math.floor(index / 10);
+    const colorOwner = getRouteColor(index);
+    const isSafe = SAFE_ABS.has(index);
+    roundRect(point.x - 22, point.y - 22, 44, 44, 6, players[colorOwner].color, "#06334e");
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
-    ctx.fillStyle = index % 10 === 0 ? players[owner].color : "#ffffff";
+    ctx.arc(point.x, point.y, isSafe ? 14 : 11, 0, Math.PI * 2);
+    ctx.fillStyle = "#fffbd1";
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = index % 10 === 0 ? "#fff" : players[owner].light;
+    ctx.strokeStyle = isSafe ? "#fff" : "rgba(0,0,0,.18)";
     ctx.stroke();
-
-    if (index % 10 === 0) {
-      ctx.fillStyle = "#fff";
-      ctx.font = "700 13px sans-serif";
+    if (isSafe) {
+      ctx.fillStyle = players[colorOwner].color;
+      ctx.font = "bold 14px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("✦", point.x, point.y + 1);
+      ctx.fillText("★", point.x, point.y + 1);
     }
   });
 
@@ -190,174 +218,183 @@ function drawRoute() {
     route.forEach((point, index) => {
       ctx.beginPath();
       ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
-      ctx.fillStyle = index === route.length - 1 ? players[playerIndex].color : players[playerIndex].light;
+      ctx.fillStyle = index === route.length - 1 ? "#fffbd1" : players[playerIndex].light;
       ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = players[playerIndex].color;
       ctx.stroke();
     });
+  });
+
+  drawFlyLines();
+}
+
+function drawFlyLines() {
+  players.forEach((player, playerIndex) => {
+    const start = board.route[getAbsoluteProgress(FLY_START_PROGRESS, playerIndex)];
+    const end = board.route[getAbsoluteProgress(FLY_END_PROGRESS, playerIndex)];
+    ctx.save();
+    ctx.setLineDash([10, 9]);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = player.color;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = player.color;
+    ctx.font = "bold 18px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("➜", (start.x + end.x) / 2, (start.y + end.y) / 2);
+    ctx.restore();
   });
 }
 
 function drawCenter() {
-  const center = board.center;
+  const { x, y } = board.center;
   players.forEach((player, index) => {
-    ctx.beginPath();
-    ctx.moveTo(center.x, center.y);
     const angleA = -Math.PI / 2 + index * Math.PI / 2;
-    const angleB = angleA + Math.PI / 2;
-    ctx.arc(center.x, center.y, 72, angleA, angleB);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.arc(x, y, 82, angleA, angleA + Math.PI / 2);
     ctx.closePath();
-    ctx.fillStyle = player.light;
+    ctx.fillStyle = player.color;
     ctx.fill();
+    ctx.strokeStyle = "white";
+    ctx.stroke();
   });
-
   ctx.beginPath();
-  ctx.arc(center.x, center.y, 39, 0, Math.PI * 2);
-  ctx.fillStyle = "#fff";
+  ctx.arc(x, y, 31, 0, Math.PI * 2);
+  ctx.fillStyle = "#fffbd1";
   ctx.fill();
-  ctx.strokeStyle = "rgba(32,49,59,0.08)";
+  ctx.strokeStyle = "#0d4264";
+  ctx.lineWidth = 3;
   ctx.stroke();
-  ctx.fillStyle = "#34444b";
-  ctx.font = "26px sans-serif";
+  ctx.fillStyle = "#0874b7";
+  ctx.font = "bold 21px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("✈", center.x, center.y);
-}
-
-function getPlanePosition(plane) {
-  if (plane.progress === -1) {
-    return board.homes[plane.playerIndex][plane.planeIndex];
-  }
-
-  if (plane.progress >= 46) {
-    const angle = (Math.PI * 2 * plane.planeIndex) / 4 - Math.PI / 2;
-    return {
-      x: board.center.x + Math.cos(angle) * 22,
-      y: board.center.y + Math.sin(angle) * 22,
-    };
-  }
-
-  if (plane.progress >= 40) {
-    return board.finishRoutes[plane.playerIndex][plane.progress - 40];
-  }
-
-  const player = players[plane.playerIndex];
-  return board.route[(player.start + plane.progress) % 40];
+  ctx.fillText("YJ", x, y);
 }
 
 function isPlaneMovable(plane, dice = state.dice) {
-  if (plane.progress >= 46) return false;
+  if (plane.progress >= FINISH_DONE) return false;
   if (plane.progress === -1) return dice === 6;
-  return plane.progress + dice <= 46;
+  return true;
 }
 
 function drawPlane(plane) {
   const pos = getPlanePosition(plane);
   const player = players[plane.playerIndex];
-  const selectable =
-    state.rolled &&
-    plane.playerIndex === state.currentPlayer &&
-    isPlaneMovable(plane);
-
-  ctx.save();
+  const selectable = state.rolled && plane.playerIndex === state.currentPlayer && isPlaneMovable(plane);
   if (selectable) {
-    const pulse = 5 + Math.sin(Date.now() / 180) * 3;
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 24 + pulse, 0, Math.PI * 2);
-    ctx.fillStyle = `${player.color}28`;
+    ctx.arc(pos.x, pos.y, 32 + Math.sin(Date.now() / 160) * 4, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,.62)";
     ctx.fill();
   }
-
-  ctx.translate(pos.x, pos.y);
-  ctx.rotate(-Math.PI / 4);
   ctx.beginPath();
-  ctx.arc(0, 0, 17, 0, Math.PI * 2);
+  ctx.arc(pos.x, pos.y, 17, 0, Math.PI * 2);
   ctx.fillStyle = player.color;
   ctx.fill();
   ctx.lineWidth = 3;
-  ctx.strokeStyle = "#fff";
+  ctx.strokeStyle = "white";
   ctx.stroke();
-
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 15px sans-serif";
+  ctx.fillStyle = "white";
+  ctx.font = "bold 14px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("✈", 0, 1);
-  ctx.restore();
+  ctx.fillText("✈", pos.x, pos.y);
 }
 
 function draw() {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
-  }
-
+  if (animationFrameId) cancelAnimationFrame(animationFrameId);
   drawBackground();
   drawHomeAreas();
   drawRoute();
   drawCenter();
   state.planes.flat().forEach(drawPlane);
-
-  if (state.rolled && !state.winner) {
-    animationFrameId = requestAnimationFrame(draw);
-  }
+  if (state.rolled && state.winner === null) animationFrameId = requestAnimationFrame(draw);
 }
 
 function renderDice(value) {
-  const pipPositions = {
-    1: [5],
-    2: [1, 9],
-    3: [1, 5, 9],
-    4: [1, 3, 7, 9],
-    5: [1, 3, 5, 7, 9],
-    6: [1, 3, 4, 6, 7, 9],
-  };
+  const positions = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
   ui.diceFace.innerHTML = "";
   for (let cell = 1; cell <= 9; cell += 1) {
-    const spot = document.createElement("span");
-    if (pipPositions[value].includes(cell)) spot.className = "pip";
-    ui.diceFace.appendChild(spot);
+    const pip = document.createElement("i");
+    if (positions[value].includes(cell)) pip.className = "pip";
+    ui.diceFace.appendChild(pip);
   }
+}
+
+function showToast(text, dice = state.dice) {
+  const faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+  clearTimeout(toastTimer);
+  ui.toastDice.textContent = faces[dice - 1] || "⚀";
+  ui.toastText.textContent = text;
+  ui.diceToast.hidden = false;
+  toastTimer = setTimeout(() => { ui.diceToast.hidden = true; }, 950);
 }
 
 function rollDice() {
   if (state.rolled || state.rolling || state.winner !== null) return;
   state.rolling = true;
-  ui.rollButton.disabled = true;
+  updateUI();
   ui.diceButton.classList.add("rolling");
-  ui.actionTitle.textContent = "骰子飞行中…";
-  ui.actionHint.textContent = "看看天空送来几点";
 
   let ticks = 0;
   const timer = setInterval(() => {
     renderDice(1 + Math.floor(Math.random() * 6));
-    ticks += 1;
-    if (ticks < 9) return;
+    if (++ticks < 9) return;
 
     clearInterval(timer);
     state.dice = 1 + Math.floor(Math.random() * 6);
-    state.rolling = false;
-    state.rolled = true;
     renderDice(state.dice);
     ui.diceButton.classList.remove("rolling");
-    addLog(`${players[state.currentPlayer].name}掷出了 ${state.dice} 点。`, state.currentPlayer);
+    state.rolling = false;
+    addLog(`${players[state.currentPlayer].name} 掷出了 ${state.dice} 点。`, state.currentPlayer, false);
+    showToast(`掷出 ${state.dice} 点`);
 
-    const movable = state.planes[state.currentPlayer].filter((plane) => isPlaneMovable(plane));
-    if (movable.length === 0) {
-      ui.actionTitle.textContent = `掷出 ${state.dice} 点`;
-      ui.actionHint.textContent = "没有飞机可以移动";
+    if (state.dice === 6) {
+      state.sixStreaks[state.currentPlayer] += 1;
+      if (state.sixStreaks[state.currentPlayer] >= 3) {
+        punishTripleSix();
+        return;
+      }
+    } else {
+      state.sixStreaks[state.currentPlayer] = 0;
+    }
+
+    const movable = state.planes[state.currentPlayer].filter(plane => isPlaneMovable(plane));
+    if (!movable.length) {
+      addLog(`${players[state.currentPlayer].name} 没有可移动飞机，轮次结束。`, state.currentPlayer, false);
       updateUI();
       draw();
-      setTimeout(nextTurn, 900);
+      syncState();
+      setTimeout(nextTurn, 950);
       return;
     }
 
-    ui.actionTitle.textContent = `掷出 ${state.dice} 点`;
-    ui.actionHint.textContent = "点击发光的飞机移动";
+    state.rolled = true;
     updateUI();
     draw();
-  }, 75);
+    syncState();
+  }, 72);
+}
+
+function punishTripleSix() {
+  state.planes[state.currentPlayer].forEach(plane => {
+    if (plane.progress < FINISH_DONE) plane.progress = -1;
+  });
+  state.sixStreaks[state.currentPlayer] = 0;
+  state.rolled = false;
+  addLog(`${players[state.currentPlayer].name} 连续三次掷出 6，场上飞机全部退回机场。`, state.currentPlayer, false);
+  showToast("三连6作废");
+  updateUI();
+  draw();
+  syncState();
+  setTimeout(nextTurn, 1100);
 }
 
 function movePlane(plane) {
@@ -365,129 +402,275 @@ function movePlane(plane) {
 
   if (plane.progress === -1) {
     plane.progress = 0;
-    addLog(`${players[plane.playerIndex].name}的一架飞机起飞了！`, plane.playerIndex);
-  } else {
-    plane.progress += state.dice;
-    addLog(`${players[plane.playerIndex].name}的飞机前进 ${state.dice} 格。`, plane.playerIndex);
-  }
-
-  handleCollision(plane);
-  state.rolled = false;
-  draw();
-  updateUI();
-
-  const finishedCount = state.planes[plane.playerIndex].filter((item) => item.progress === 46).length;
-  if (finishedCount === 4) {
-    declareWinner(plane.playerIndex);
+    addLog(`${players[plane.playerIndex].name} 派出一架飞机到起飞点。`, plane.playerIndex, false);
+    afterMove();
     return;
   }
 
+  const result = moveAlongPath(plane, state.dice);
+  if (result === "blocked-crash") {
+    afterMove();
+    return;
+  }
+
+  resolveLandingEffects(plane);
+  afterMove();
+}
+
+function moveAlongPath(plane, dice) {
+  const startProgress = plane.progress;
+  if (startProgress >= FINISH_START) {
+    plane.progress = bounceFinish(startProgress + dice);
+    addLog(`${players[plane.playerIndex].name} 在终点通道前进 ${dice} 格。`, plane.playerIndex, false);
+    return "moved";
+  }
+
+  const planned = startProgress + dice;
+  const routeSteps = Math.min(dice, Math.max(0, ROUTE_LENGTH - 1 - startProgress));
+  const blocker = findFirstEnemyStackOnRoute(plane, routeSteps);
+  if (blocker) {
+    if (blocker.step === dice) {
+      plane.progress = -1;
+      blocker.planes.forEach(item => { item.progress = -1; });
+      addLog(`${players[plane.playerIndex].name} 刚好撞上叠子，双方全部回机场。`, plane.playerIndex, false);
+      return "blocked-crash";
+    }
+    const reversed = startProgress + blocker.step - (dice - blocker.step);
+    plane.progress = Math.max(0, reversed);
+    addLog(`${players[plane.playerIndex].name} 被叠子挡住，反向退回 ${dice - blocker.step} 格。`, plane.playerIndex, false);
+    return "moved";
+  }
+
+  plane.progress = planned > FINISH_DONE ? bounceFinish(planned) : planned;
+  addLog(`${players[plane.playerIndex].name} 前进 ${dice} 格。`, plane.playerIndex, false);
+  return "moved";
+}
+
+function bounceFinish(progress) {
+  if (progress <= FINISH_DONE) return progress;
+  return FINISH_DONE - (progress - FINISH_DONE);
+}
+
+function findFirstEnemyStackOnRoute(plane, maxSteps) {
+  for (let step = 1; step <= maxSteps; step += 1) {
+    const abs = getAbsoluteProgress(plane.progress + step, plane.playerIndex);
+    const stack = getPlanesAtRouteAbs(abs).filter(item => item.playerIndex !== plane.playerIndex);
+    const grouped = groupByPlayer(stack).find(group => group.planes.length >= 2);
+    if (grouped) return { step, planes: grouped.planes };
+  }
+  return null;
+}
+
+function groupByPlayer(planesAtCell) {
+  return players.map((_, playerIndex) => ({
+    playerIndex,
+    planes: planesAtCell.filter(plane => plane.playerIndex === playerIndex),
+  })).filter(group => group.planes.length > 0);
+}
+
+function getPlanesAtRouteAbs(abs) {
+  return state.planes.flat().filter(plane =>
+    plane.progress >= 0 &&
+    plane.progress < ROUTE_LENGTH &&
+    getAbsoluteProgress(plane.progress, plane.playerIndex) === abs
+  );
+}
+
+function resolveLandingEffects(plane) {
+  if (plane.progress >= ROUTE_LENGTH) return;
+  const landingAbs = getAbsoluteProgress(plane.progress, plane.playerIndex);
+  if (!SAFE_ABS.has(landingAbs)) hitSingleEnemiesAt(landingAbs, plane.playerIndex, "撞回了");
+
+  if (tryFlyLine(plane)) return;
+
+  if (getRouteColor(landingAbs) === plane.playerIndex) trySameColorJump(plane);
+}
+
+function trySameColorJump(plane) {
+  const nextProgress = plane.progress + 4;
+  if (nextProgress >= ROUTE_LENGTH) return false;
+  const nextAbs = getAbsoluteProgress(nextProgress, plane.playerIndex);
+  plane.progress = nextProgress;
+  addLog(`${players[plane.playerIndex].name} 触发同色跳跃，跳到下一格同色赛道。`, plane.playerIndex, false);
+  if (!SAFE_ABS.has(nextAbs)) hitSingleEnemiesAt(nextAbs, plane.playerIndex, "跳跃撞回了");
+  return true;
+}
+
+function tryFlyLine(plane) {
+  if (plane.progress !== FLY_START_PROGRESS) return false;
+  const endAbs = getAbsoluteProgress(FLY_END_PROGRESS, plane.playerIndex);
+  const endEnemies = groupByPlayer(getPlanesAtRouteAbs(endAbs).filter(item => item.playerIndex !== plane.playerIndex));
+  if (endEnemies.some(group => group.planes.length >= 2)) {
+    addLog(`${players[plane.playerIndex].name} 飞棋终点有敌方叠子，无法飞行。`, plane.playerIndex, false);
+    return false;
+  }
+  for (let progress = FLY_START_PROGRESS + 1; progress <= FLY_END_PROGRESS; progress += 1) {
+    const abs = getAbsoluteProgress(progress, plane.playerIndex);
+    hitAllEnemiesAt(abs, plane.playerIndex, "飞行途中击落了");
+  }
+  plane.progress = FLY_END_PROGRESS;
+  addLog(`${players[plane.playerIndex].name} 沿虚线飞行到远处同色格。`, plane.playerIndex, false);
+  return true;
+}
+
+function hitSingleEnemiesAt(abs, playerIndex, verb) {
+  groupByPlayer(getPlanesAtRouteAbs(abs).filter(plane => plane.playerIndex !== playerIndex)).forEach(group => {
+    if (group.planes.length === 1) {
+      group.planes[0].progress = -1;
+      addLog(`${players[playerIndex].name} ${verb} ${players[group.playerIndex].name} 的飞机。`, playerIndex, false);
+    }
+  });
+}
+
+function hitAllEnemiesAt(abs, playerIndex, verb) {
+  groupByPlayer(getPlanesAtRouteAbs(abs).filter(plane => plane.playerIndex !== playerIndex)).forEach(group => {
+    group.planes.forEach(plane => { plane.progress = -1; });
+    addLog(`${players[playerIndex].name} ${verb} ${players[group.playerIndex].name} 的飞机。`, playerIndex, false);
+  });
+}
+
+function afterMove() {
+  state.rolled = false;
+  const finished = state.planes[state.currentPlayer].filter(plane => plane.progress >= FINISH_DONE).length;
+  if (finished === 4) {
+    declareWinner(state.currentPlayer);
+    return;
+  }
   if (state.dice === 6) {
-    addLog(`${players[plane.playerIndex].name}掷出 6 点，获得额外机会。`, plane.playerIndex);
-    ui.actionTitle.textContent = `${players[state.currentPlayer].name}再飞一次`;
-    ui.actionHint.textContent = "点击骰子继续";
+    addLog(`${players[state.currentPlayer].name} 掷出 6，获得额外行动。`, state.currentPlayer, false);
+    showToast("再掷一次");
+    updateUI();
+    draw();
+    syncState();
   } else {
     nextTurn();
   }
 }
 
-function handleCollision(movedPlane) {
-  if (movedPlane.progress < 0 || movedPlane.progress >= 40) return;
-  const absolutePosition = (players[movedPlane.playerIndex].start + movedPlane.progress) % 40;
-
-  state.planes.flat().forEach((other) => {
-    if (
-      other.playerIndex !== movedPlane.playerIndex &&
-      other.progress >= 0 &&
-      other.progress < 40 &&
-      (players[other.playerIndex].start + other.progress) % 40 === absolutePosition
-    ) {
-      other.progress = -1;
-      addLog(
-        `${players[movedPlane.playerIndex].name}撞回了${players[other.playerIndex].name}的飞机！`,
-        movedPlane.playerIndex
-      );
-    }
-  });
-}
-
 function nextTurn() {
   if (state.winner !== null) return;
   state.rolled = false;
-  state.currentPlayer = (state.currentPlayer + 1) % players.length;
-  if (state.currentPlayer === 0) state.round += 1;
-  ui.actionTitle.textContent = `轮到${players[state.currentPlayer].name}`;
-  ui.actionHint.textContent = "点击骰子开始飞行";
+  const currentIndex = state.activePlayers.indexOf(state.currentPlayer);
+  const nextIndex = (currentIndex + 1) % state.activePlayers.length;
+  state.currentPlayer = state.activePlayers[nextIndex];
+  if (nextIndex === 0) state.round += 1;
   updateUI();
   draw();
+  syncState();
 }
 
-function declareWinner(playerIndex) {
-  state.winner = playerIndex;
-  const player = players[playerIndex];
-  addLog(`${player.name}让全部飞机抵达终点，赢得胜利！`, playerIndex);
-  ui.winnerLabel.textContent = `${player.name}胜利`;
-  ui.winnerOverlay.style.setProperty("--winner-color", player.color);
+function declareWinner(index) {
+  state.winner = index;
+  state.rolled = false;
+  ui.winnerLabel.textContent = `${players[index].name} 获胜`;
   ui.winnerOverlay.hidden = false;
+  addLog(`${players[index].name} 的 4 架飞机全部抵达中心终点，游戏结束！`, index, false);
   updateUI();
+  draw();
+  syncState();
 }
 
-function addLog(message, playerIndex) {
+function addLog(message, playerIndex, shouldSync = true) {
   state.logs.unshift({ message, playerIndex });
-  state.logs = state.logs.slice(0, 8);
+  state.logs = state.logs.slice(0, 40);
   renderLogs();
+  if (shouldSync) syncState();
 }
 
 function renderLogs() {
-  ui.gameLog.innerHTML = state.logs
-    .map(
-      (log) => `
-        <li>
-          <span class="log-bullet" style="--log-color:${players[log.playerIndex].color}"></span>
-          <span>${log.message}</span>
-        </li>`
-    )
-    .join("");
+  ui.gameLog.innerHTML = state.logs.map(log =>
+    `<li style="border-left:3px solid ${players[log.playerIndex].color}">${escapeHtml(log.message)}</li>`
+  ).join("");
+}
+
+function addChat(message, playerIndex = state.currentPlayer, shouldSync = true) {
+  const clean = message.trim().slice(0, 48);
+  if (!clean) return;
+  state.chats.push({ message: clean, playerIndex });
+  state.chats = state.chats.slice(-30);
+  renderChats();
+  if (shouldSync) syncState();
+}
+
+function renderChats() {
+  ui.chatList.innerHTML = state.chats.map(chat =>
+    `<div class="message" style="--message-color:${players[chat.playerIndex].color}">
+      <strong>${escapeHtml(players[chat.playerIndex].name)}</strong><span>${escapeHtml(chat.message)}</span>
+    </div>`
+  ).join("");
+  ui.chatList.scrollTop = ui.chatList.scrollHeight;
+}
+
+function renderPlayers() {
+  players.forEach((player, index) => {
+    const finished = state.planes[index].filter(plane => plane.progress >= FINISH_DONE).length;
+    const flying = state.planes[index].filter(plane => plane.progress >= 0 && plane.progress < FINISH_DONE).length;
+    const seat = document.getElementById(`seat${index}`);
+    seat.style.setProperty("--seat-color", player.color);
+    seat.classList.toggle("active", index === state.currentPlayer);
+    seat.innerHTML = `<span class="avatar">${player.icon}</span>
+      <strong class="seat-name">${escapeHtml(player.name)}</strong>
+      <span class="seat-score">飞行 ${flying} · 到达 ${finished}/4</span>`;
+  });
+  ui.playerList.innerHTML = players.map((player, index) =>
+    `<label class="player-editor" style="--editor-color:${player.color}">
+      <i></i><input data-player="${index}" maxlength="10" value="${escapeHtml(player.name)}">
+    </label>`
+  ).join("");
 }
 
 function updateUI() {
   const current = players[state.currentPlayer];
-  ui.turnDot.style.background = current.color;
-  ui.turnDot.style.boxShadow = `0 0 0 5px ${current.color}24`;
-  ui.turnLabel.textContent = current.name;
+  ui.actionTitle.textContent = state.rolled ? `${current.name} 选择飞机` : `轮到 ${current.name}`;
+  ui.actionHint.textContent = state.rolled
+    ? `掷出 ${state.dice} 点，点击发光飞机`
+    : `连续6：${state.sixStreaks[state.currentPlayer]}/2`;
   ui.roundLabel.textContent = `第 ${state.round} 回合`;
-  ui.rollButton.disabled = state.rolled || state.rolling || state.winner !== null;
-  ui.diceButton.disabled = ui.rollButton.disabled;
-
-  ui.playerList.innerHTML = players
-    .map((player, index) => {
-      const finished = state.planes[index].filter((plane) => plane.progress === 46).length;
-      const flying = state.planes[index].filter((plane) => plane.progress >= 0 && plane.progress < 46).length;
-      return `
-        <div class="player-item ${index === state.currentPlayer ? "active" : ""}" style="--player-color:${player.color}">
-          <span class="player-color"></span>
-          <span class="player-name">${player.name}</span>
-          <span class="player-progress">终点 ${finished}/4 · 飞行中 ${flying}</span>
-        </div>`;
-    })
-    .join("");
+  ui.turnLabel.textContent = current.name;
+  const disabled = state.rolled || state.rolling || state.winner !== null;
+  ui.rollButton.disabled = disabled;
+  ui.diceButton.disabled = disabled;
+  renderPlayers();
+  renderLogs();
+  renderChats();
 }
 
 function findClickedPlane(event) {
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const x = (event.clientX - rect.left) * scaleX;
-  const y = (event.clientY - rect.top) * scaleY;
-
-  return state.planes[state.currentPlayer].find((plane) => {
-    if (!isPlaneMovable(plane)) return false;
+  const x = (event.clientX - rect.left) * canvas.width / rect.width;
+  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  return state.planes[state.currentPlayer].find(plane => {
     const pos = getPlanePosition(plane);
-    return Math.hypot(x - pos.x, y - pos.y) <= 38;
+    return isPlaneMovable(plane) && Math.hypot(x - pos.x, y - pos.y) <= 39;
   });
 }
 
-canvas.addEventListener("click", (event) => {
+function syncState() {
+  const payload = { version: 3, state, names: players.map(player => player.name) };
+  localStorage.setItem("yj-flight-chess-state-v3", JSON.stringify(payload));
+  if (channel) channel.postMessage(payload);
+}
+
+function applyRemote(payload) {
+  if (!payload || payload.version !== 3 || !payload.state) return;
+  Object.assign(state, payload.state, { rolling: false });
+  if (payload.names) payload.names.forEach((name, index) => { players[index].name = name; });
+  renderDice(state.dice);
+  updateUI();
+  draw();
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  })[char]);
+}
+
+canvas.addEventListener("click", event => {
   if (!state.rolled) return;
   const plane = findClickedPlane(event);
   if (plane) movePlane(plane);
@@ -495,9 +678,50 @@ canvas.addEventListener("click", (event) => {
 
 ui.rollButton.addEventListener("click", rollDice);
 ui.diceButton.addEventListener("click", rollDice);
-ui.newGameButton.addEventListener("click", resetGame);
-ui.playAgainButton.addEventListener("click", resetGame);
-ui.rulesButton.addEventListener("click", () => ui.rulesDialog.showModal());
+document.getElementById("newGameButton").addEventListener("click", () => {
+  if (confirm("确定重新开始这一局吗？")) resetGame();
+});
+document.getElementById("playAgainButton").addEventListener("click", resetGame);
+document.getElementById("rulesButton").addEventListener("click", () => ui.rulesDialog.showModal());
+document.getElementById("copyRoomButton").addEventListener("click", async event => {
+  await navigator.clipboard?.writeText("YJ-2026");
+  event.currentTarget.textContent = "已复制";
+  setTimeout(() => { event.currentTarget.textContent = "复制房间号"; }, 1200);
+});
+document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+  document.querySelectorAll(".tab,.panel").forEach(item => item.classList.remove("active"));
+  tab.classList.add("active");
+  document.getElementById(tab.dataset.panel).classList.add("active");
+}));
+ui.chatForm.addEventListener("submit", event => {
+  event.preventDefault();
+  addChat(ui.chatInput.value);
+  ui.chatInput.value = "";
+});
+document.querySelectorAll(".quick-chat button").forEach(button =>
+  button.addEventListener("click", () => addChat(button.textContent))
+);
+ui.playerList.addEventListener("change", event => {
+  const index = Number(event.target.dataset.player);
+  if (!Number.isInteger(index)) return;
+  players[index].name = event.target.value.trim() || `玩家${index + 1}`;
+  updateUI();
+  syncState();
+});
+if (channel) channel.addEventListener("message", event => applyRemote(event.data));
+window.addEventListener("storage", event => {
+  if (event.key === "yj-flight-chess-state-v3" && event.newValue) applyRemote(JSON.parse(event.newValue));
+});
 
 createBoardGeometry();
-resetGame();
+const saved = localStorage.getItem("yj-flight-chess-state-v3");
+if (saved) {
+  try {
+    applyRemote(JSON.parse(saved));
+  } catch {
+    resetGame();
+  }
+} else {
+  resetGame();
+  addChat("欢迎来到 YJ飞行器！", 0);
+}
