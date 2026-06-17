@@ -166,6 +166,22 @@ button { cursor: pointer; }
 .player-seat.locked-seat {
   opacity: .82;
 }
+.player-seat.ai-seat {
+  background: rgba(28, 38, 58, .78);
+  border-style: dashed;
+}
+.player-seat.ai-seat::before {
+  content: "AI";
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #073b63;
+  background: #ffe66b;
+  font-size: 10px;
+  font-weight: 900;
+}
 @keyframes activeSeatPulse {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-2px) scale(1.025); }
@@ -360,6 +376,16 @@ canvas {
 .player-editor i { width: 10px; height: 10px; border-radius: 50%; background: var(--editor-color); }
 .player-editor input { min-width: 0; width: 100%; border: 0; color: #174b68; background: transparent; font-weight: 800; outline: none; }
 .player-editor input:disabled { opacity: .5; cursor: not-allowed; }
+.take-seat-button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: #073b63;
+  background: #ffe66b;
+  font-size: 11px;
+  font-weight: 900;
+}
 .edit-tip { margin: 0 0 10px; color: #608398; font-size: 11px; }
 
 .winner-overlay {
