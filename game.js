@@ -31,6 +31,17 @@ const ui = {
   copyRoomButton: document.getElementById("copyRoomButton"),
   onlineStatus: document.getElementById("onlineStatus"),
   soundButton: document.getElementById("soundButton"),
+  app: document.querySelector(".app"),
+  lobbyScreen: document.getElementById("lobbyScreen"),
+  battleScreen: document.getElementById("battleScreen"),
+  lobbyRoomInput: document.getElementById("lobbyRoomInput"),
+  lobbyCreateButton: document.getElementById("lobbyCreateButton"),
+  lobbyJoinButton: document.getElementById("lobbyJoinButton"),
+  localDemoButton: document.getElementById("localDemoButton"),
+  backLobbyButton: document.getElementById("backLobbyButton"),
+  ruleTripleSix: document.getElementById("ruleTripleSix"),
+  ruleAiTakeover: document.getElementById("ruleAiTakeover"),
+  ruleExactFinish: document.getElementById("ruleExactFinish"),
 };
 
 const multiplayer = {
@@ -49,6 +60,8 @@ const multiplayer = {
 const audioState = {
   enabled: localStorage.getItem("yj-flight-chess-sound") !== "off",
   context: null,
+  bgmTimer: null,
+  bgmStep: 0,
 };
 
 const ROUTE_LENGTH = 52;
@@ -70,6 +83,12 @@ const players = [
   { name: "青空", color: "#33c884", light: "#9eefd0", start: 39, icon: "青" },
 ];
 
+const AI_NAME_PARTS = {
+  prefix: ["星河", "夜航", "银翼", "云雀", "玄月", "疾风", "墨影", "流光"],
+  suffix: ["机长", "巡航者", "飞行员", "领航员", "小队", "航迹", "引擎", "雷达"],
+};
+const AI_AVATARS = ["航", "翼", "星", "雷", "月", "云", "影", "光"];
+
 const state = {
   currentPlayer: 0,
   activePlayers: [0, 1, 2, 3],
@@ -82,6 +101,13 @@ const state = {
   playerSeats: [null, null, null, null],
   aiSeats: [true, true, true, true],
   aiDriverId: null,
+  settings: {
+    skin: "nebula",
+    tripleSixPenalty: true,
+    aiTakeover: true,
+    exactFinish: true,
+  },
+  avatars: ["Y", "蓝", "金", "青"],
   planes: [],
   logs: [],
   chats: [],
@@ -169,6 +195,51 @@ function resetGame(shouldSync = true) {
   if (shouldSync) syncState();
 }
 
+// 根据创建页设置生成可同步的房间规则。
+function readLobbySettings() {
+  return {
+    skin: document.querySelector(".skin-card.active")?.dataset.skin || "nebula",
+    tripleSixPenalty: ui.ruleTripleSix.checked,
+    aiTakeover: ui.ruleAiTakeover.checked,
+    exactFinish: ui.ruleExactFinish.checked,
+  };
+}
+
+function applySettings(settings = state.settings) {
+  state.settings = { ...state.settings, ...settings };
+  document.body.dataset.skin = state.settings.skin;
+  document.querySelectorAll(".skin-card").forEach(button => {
+    button.classList.toggle("active", button.dataset.skin === state.settings.skin);
+  });
+  ui.ruleTripleSix.checked = Boolean(state.settings.tripleSixPenalty);
+  ui.ruleAiTakeover.checked = Boolean(state.settings.aiTakeover);
+  ui.ruleExactFinish.checked = Boolean(state.settings.exactFinish);
+}
+
+function showScreen(screen) {
+  const battle = screen === "battle";
+  ui.app.dataset.screen = screen;
+  ui.lobbyScreen.hidden = battle;
+  ui.battleScreen.hidden = !battle;
+}
+
+function randomAiName() {
+  const { prefix, suffix } = AI_NAME_PARTS;
+  return `${prefix[Math.floor(Math.random() * prefix.length)]}${suffix[Math.floor(Math.random() * suffix.length)]}`;
+}
+
+function assignAiProfiles() {
+  if (!Array.isArray(state.avatars)) state.avatars = players.map(player => player.icon);
+  players.forEach((player, index) => {
+    if (state.aiSeats?.[index]) {
+      player.name = randomAiName();
+      state.avatars[index] = AI_AVATARS[Math.floor(Math.random() * AI_AVATARS.length)];
+    } else {
+      state.avatars[index] ||= player.icon;
+    }
+  });
+}
+
 function isOnlineRoom() {
   return Boolean(multiplayer.ready && multiplayer.roomId);
 }
@@ -181,7 +252,7 @@ function getOwnedColorIndex() {
 function normalizeAiSeats() {
   if (!Array.isArray(state.playerSeats)) state.playerSeats = [null, null, null, null];
   if (!Array.isArray(state.aiSeats)) state.aiSeats = [true, true, true, true];
-  state.aiSeats = state.aiSeats.map((isAi, index) => Boolean(isAi || !state.playerSeats[index]));
+  state.aiSeats = state.aiSeats.map((isAi, index) => Boolean(state.settings.aiTakeover && (isAi || !state.playerSeats[index])));
 }
 
 function canControlPlayer(playerIndex) {
@@ -263,6 +334,8 @@ function setSoundEnabled(enabled) {
   localStorage.setItem("yj-flight-chess-sound", enabled ? "on" : "off");
   ui.soundButton.textContent = enabled ? "🔊" : "🔇";
   ui.soundButton.classList.toggle("muted", !enabled);
+  if (enabled) startBgm();
+  else stopBgm();
 }
 
 function playSound(type) {
@@ -293,6 +366,42 @@ function playSound(type) {
     oscillator.stop(now + offset + duration + .02);
     offset += duration + .025;
   });
+}
+
+function ensureAudioContext() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  audioState.context ||= new AudioContext();
+  if (audioState.context.state === "suspended") audioState.context.resume();
+  return audioState.context;
+}
+
+// 循环纯音乐 BGM：使用 WebAudio 合成，不依赖版权音乐文件。
+function startBgm() {
+  if (!audioState.enabled || audioState.bgmTimer) return;
+  const ctxAudio = ensureAudioContext();
+  if (!ctxAudio) return;
+  const scale = [196, 246.94, 293.66, 369.99, 440, 369.99, 293.66, 246.94];
+  audioState.bgmTimer = setInterval(() => {
+    const now = ctxAudio.currentTime;
+    const frequency = scale[audioState.bgmStep % scale.length];
+    const oscillator = ctxAudio.createOscillator();
+    const gain = ctxAudio.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(.025, now + .03);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + .62);
+    oscillator.connect(gain).connect(ctxAudio.destination);
+    oscillator.start(now);
+    oscillator.stop(now + .68);
+    audioState.bgmStep += 1;
+  }, 520);
+}
+
+function stopBgm() {
+  clearInterval(audioState.bgmTimer);
+  audioState.bgmTimer = null;
 }
 
 function getRouteColor(absIndex) {
@@ -332,12 +441,36 @@ function roundRect(x, y, width, height, radius, fill, stroke) {
 }
 
 function drawBackground() {
+  const skins = {
+    nebula: ["#10142b", "#112b4b", "#07111f"],
+    aurora: ["#0b1837", "#123e55", "#160d2f"],
+    carbon: ["#0d1017", "#18202c", "#05070b"],
+  };
+  const palette = skins[state.settings?.skin] || skins.nebula;
   const gradient = ctx.createLinearGradient(0, 0, 760, 760);
-  gradient.addColorStop(0, "#f8fdff");
-  gradient.addColorStop(.52, "#eaf8fd");
-  gradient.addColorStop(1, "#d8f0fa");
+  gradient.addColorStop(0, palette[0]);
+  gradient.addColorStop(.52, palette[1]);
+  gradient.addColorStop(1, palette[2]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 760, 760);
+
+  ctx.save();
+  ctx.globalAlpha = .2;
+  ctx.strokeStyle = "#79d7ff";
+  ctx.lineWidth = 1;
+  for (let x = 40; x < 760; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 760);
+    ctx.stroke();
+  }
+  for (let y = 40; y < 760; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(760, y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawHomeAreas() {
@@ -348,15 +481,19 @@ function drawHomeAreas() {
     { x: 585, y: 55 },
   ];
   homes.forEach((home, index) => {
-    roundRect(home.x, home.y, 120, 120, 3, "#fff", "#111");
+    roundRect(home.x, home.y, 120, 120, 8, "rgba(8,18,36,.86)", "rgba(255,255,255,.58)");
     board.homes[index].forEach(point => {
+      ctx.save();
+      ctx.shadowColor = players[index].color;
+      ctx.shadowBlur = 16;
       ctx.beginPath();
       ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
       ctx.fillStyle = players[index].color;
       ctx.fill();
       ctx.lineWidth = 3;
-      ctx.strokeStyle = "#0b2b40";
+      ctx.strokeStyle = "rgba(255,255,255,.78)";
       ctx.stroke();
+      ctx.restore();
     });
   });
 }
@@ -366,7 +503,9 @@ function drawTrackRibbons() {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.lineWidth = ROUTE_CELL + 4;
-  ctx.globalAlpha = .88;
+  ctx.globalAlpha = .72;
+  ctx.shadowColor = "rgba(0,0,0,.38)";
+  ctx.shadowBlur = 8;
 
   for (let index = 0; index < board.route.length; index += 1) {
     const current = board.route[index];
@@ -395,11 +534,11 @@ function drawRoute() {
   board.route.forEach((point, index) => {
     const colorOwner = getRouteColor(index);
     const isTriangle = SAFE_ABS.has(index) || isFlyEndpoint(index, colorOwner);
-    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 5, "#fff", "#0b2b40");
+    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 6, "rgba(7,16,31,.94)", "rgba(209,241,255,.78)");
     if (isTriangle) {
       drawTriangleCell(point, players[colorOwner].color, index);
     } else {
-      roundRect(point.x - 11, point.y - 11, 22, 22, 4, players[colorOwner].color, "rgba(0,0,0,.18)");
+      roundRect(point.x - 11, point.y - 11, 22, 22, 5, players[colorOwner].color, "rgba(255,255,255,.22)");
     }
     ctx.beginPath();
     ctx.arc(point.x, point.y, SAFE_ABS.has(index) ? 10 : ROUTE_DOT, 0, Math.PI * 2);
@@ -419,6 +558,9 @@ function drawRoute() {
 
   board.finishRoutes.forEach((route, playerIndex) => {
     route.forEach((point, index) => {
+      ctx.save();
+      ctx.shadowColor = players[playerIndex].color;
+      ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.arc(point.x, point.y, FINISH_DOT, 0, Math.PI * 2);
       ctx.fillStyle = index === route.length - 1 ? "#fffbd1" : players[playerIndex].light;
@@ -426,6 +568,7 @@ function drawRoute() {
       ctx.lineWidth = 3;
       ctx.strokeStyle = players[playerIndex].color;
       ctx.stroke();
+      ctx.restore();
     });
   });
 
@@ -490,10 +633,10 @@ function drawCenter() {
   drawCenterArrow(x, y, 2, "down");
   drawCenterArrow(x, y, 1, "left");
   ctx.beginPath();
-  ctx.arc(x, y, 24, 0, Math.PI * 2);
+  ctx.arc(x, y, 22, 0, Math.PI * 2);
   ctx.fillStyle = "#fffbd1";
   ctx.fill();
-  ctx.strokeStyle = "#0d4264";
+  ctx.strokeStyle = "rgba(12,28,50,.95)";
   ctx.lineWidth = 3;
   ctx.stroke();
   ctx.fillStyle = "#0874b7";
@@ -617,6 +760,7 @@ function scheduleAiTurn(delay = 700) {
 
 function shouldRunAiTurn() {
   return isOnlineRoom() &&
+    state.settings.aiTakeover &&
     isAiDriver() &&
     humanSeatCount() >= 2 &&
     isAiPlayer(state.currentPlayer) &&
@@ -698,7 +842,7 @@ function rollDiceForCurrent(systemAction = false) {
 
     if (state.dice === 6) {
       state.sixStreaks[state.currentPlayer] += 1;
-      if (state.sixStreaks[state.currentPlayer] >= 3) {
+      if (state.settings.tripleSixPenalty && state.sixStreaks[state.currentPlayer] >= 3) {
         punishTripleSix();
         return;
       }
@@ -798,6 +942,7 @@ function moveAlongPath(plane, dice) {
 }
 
 function bounceFinish(progress) {
+  if (!state.settings.exactFinish && progress >= FINISH_DONE) return FINISH_DONE;
   if (progress <= FINISH_DONE) return progress;
   return FINISH_DONE - (progress - FINISH_DONE);
 }
@@ -968,7 +1113,7 @@ function renderPlayers() {
     seat.classList.toggle("your-seat", getOwnedColorIndex() === index);
     seat.classList.toggle("locked-seat", isOnlineRoom() && getOwnedColorIndex() !== index);
     seat.classList.toggle("ai-seat", isAiPlayer(index));
-    seat.innerHTML = `<span class="avatar">${player.icon}</span>
+    seat.innerHTML = `<span class="avatar">${escapeHtml(state.avatars?.[index] || player.icon)}</span>
       <strong class="seat-name">${escapeHtml(player.name)}</strong>
       <span class="seat-score">${getSeatLabel(index)} · 飞行 ${flying} · 到达 ${finished}/4</span>`;
   });
@@ -1025,6 +1170,7 @@ function buildSyncPayload() {
     version: 4,
     state: JSON.parse(JSON.stringify(state)),
     names: players.map(player => player.name),
+    avatars: state.avatars,
     updatedBy: multiplayer.playerId,
     updatedAt: Date.now(),
   };
@@ -1050,6 +1196,8 @@ function applyRemote(payload, force = false) {
   if (!state.aiDriverId) state.aiDriverId = multiplayer.playerId;
   multiplayer.colorIndex = getOwnedColorIndex();
   if (payload.names) payload.names.forEach((name, index) => { players[index].name = name; });
+  if (payload.avatars) state.avatars = payload.avatars;
+  applySettings(state.settings);
   renderDice(state.dice);
   updateUI();
   draw();
@@ -1118,10 +1266,13 @@ async function createOnlineRoom() {
   if (!ensureCloudReady()) return;
   const roomId = makeRoomId();
   multiplayer.roomId = roomId;
+  state.settings = readLobbySettings();
+  applySettings(state.settings);
   state.playerSeats = [null, null, null, null];
-  state.aiSeats = [true, true, true, true];
+  state.aiSeats = state.settings.aiTakeover ? [true, true, true, true] : [false, false, false, false];
   state.aiDriverId = multiplayer.playerId;
   claimSeat(state.currentPlayer);
+  assignAiProfiles();
   ui.roomInput.value = roomId;
   updateRoomLabel();
   await saveRoomState(buildSyncPayload());
@@ -1129,6 +1280,8 @@ async function createOnlineRoom() {
   localStorage.setItem("yj-flight-chess-room", roomId);
   setOnlineStatus("房间已创建", true);
   playSound("join");
+  startBgm();
+  showScreen("battle");
   updateUI();
   scheduleAiTurn();
 }
@@ -1159,7 +1312,10 @@ async function joinRoom(rawRoomId) {
   if (data?.state) {
     applyRemote(data.state, true);
   } else {
+    state.settings = readLobbySettings();
+    applySettings(state.settings);
     state.aiDriverId = multiplayer.playerId;
+    assignAiProfiles();
     await saveRoomState(buildSyncPayload());
   }
 
@@ -1170,6 +1326,8 @@ async function joinRoom(rawRoomId) {
   localStorage.setItem("yj-flight-chess-room", roomId);
   setOnlineStatus("已加入房间", true);
   playSound("join");
+  startBgm();
+  showScreen("battle");
   updateUI();
   scheduleAiTurn();
 }
@@ -1224,6 +1382,26 @@ document.getElementById("playAgainButton").addEventListener("click", resetGame);
 document.getElementById("rulesButton").addEventListener("click", () => ui.rulesDialog.showModal());
 ui.createRoomButton.addEventListener("click", createOnlineRoom);
 ui.joinRoomButton.addEventListener("click", () => joinRoom(ui.roomInput.value));
+ui.lobbyCreateButton.addEventListener("click", createOnlineRoom);
+ui.lobbyJoinButton.addEventListener("click", () => joinRoom(ui.lobbyRoomInput.value));
+ui.lobbyRoomInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") joinRoom(ui.lobbyRoomInput.value);
+});
+ui.localDemoButton.addEventListener("click", () => {
+  state.settings = readLobbySettings();
+  applySettings(state.settings);
+  resetGame(false);
+  showScreen("battle");
+  startBgm();
+});
+ui.backLobbyButton.addEventListener("click", () => showScreen("lobby"));
+document.querySelectorAll(".skin-card").forEach(button => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".skin-card").forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    applySettings({ ...state.settings, skin: button.dataset.skin });
+  });
+});
 ui.roomInput.addEventListener("keydown", event => {
   if (event.key === "Enter") joinRoom(ui.roomInput.value);
 });

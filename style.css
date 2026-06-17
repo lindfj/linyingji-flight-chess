@@ -427,3 +427,322 @@ dialog::backdrop { background: rgba(0,25,51,.7); backdrop-filter: blur(4px); }
   .dice-face { width: 39px; height: 39px; }
   .roll-button { min-width: 94px; padding: 11px; }
 }
+
+/* Dark lobby and battle refresh */
+body {
+  min-height: 100vh;
+  color: #edf8ff;
+  background:
+    radial-gradient(circle at 20% 12%, rgba(61, 178, 255, .32), transparent 30%),
+    radial-gradient(circle at 85% 8%, rgba(255, 213, 92, .18), transparent 26%),
+    linear-gradient(160deg, #050813, #0a1730 45%, #07101f);
+}
+
+body[data-skin="aurora"] {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(44, 229, 186, .32), transparent 30%),
+    radial-gradient(circle at 82% 12%, rgba(111, 89, 255, .32), transparent 28%),
+    linear-gradient(160deg, #061124, #0b3045 50%, #140c2c);
+}
+
+body[data-skin="carbon"] {
+  background:
+    radial-gradient(circle at 24% 10%, rgba(148, 163, 184, .22), transparent 26%),
+    radial-gradient(circle at 78% 14%, rgba(34, 197, 94, .12), transparent 24%),
+    linear-gradient(160deg, #050608, #101722 52%, #05070b);
+}
+
+.app {
+  width: min(100%, 900px);
+  min-height: 100vh;
+  background: rgba(7, 15, 30, .72);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 30px 90px rgba(0,0,0,.42);
+}
+
+.topbar {
+  background: linear-gradient(135deg, rgba(12, 35, 67, .92), rgba(8, 17, 34, .78));
+  border-bottom: 1px solid rgba(255,255,255,.12);
+}
+
+.brand-plane {
+  background: linear-gradient(135deg, rgba(111, 217, 255, .95), rgba(255,255,255,.18));
+  box-shadow: 0 0 28px rgba(74, 201, 255, .38);
+}
+
+.top-actions .square-button,
+.square-button {
+  color: #e7fbff;
+  background: rgba(255,255,255,.09);
+  border: 1px solid rgba(255,255,255,.2);
+  box-shadow: inset 0 1px rgba(255,255,255,.16), 0 10px 25px rgba(0,0,0,.22);
+}
+
+.lobby-screen {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.lobby-screen[hidden],
+.battle-screen[hidden] {
+  display: none;
+}
+
+.glass-card {
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(255,255,255,.13), rgba(255,255,255,.06));
+  box-shadow: 0 24px 60px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.16);
+  backdrop-filter: blur(18px);
+}
+
+.lobby-hero {
+  padding: 28px;
+  overflow: hidden;
+  position: relative;
+}
+
+.lobby-hero::after {
+  content: "";
+  position: absolute;
+  right: -70px;
+  top: -80px;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(85, 205, 255, .35), transparent 66%);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #8be9ff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .18em;
+}
+
+.lobby-hero h1 {
+  margin: 0;
+  font-size: clamp(34px, 6vw, 58px);
+  letter-spacing: -.04em;
+}
+
+.lobby-hero p {
+  max-width: 620px;
+  margin: 12px 0 0;
+  color: #b9d5e8;
+  line-height: 1.7;
+}
+
+.room-creator {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.form-row {
+  display: grid;
+  gap: 10px;
+}
+
+.form-row > label {
+  color: #dff8ff;
+  font-weight: 900;
+}
+
+.join-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.join-row input,
+.room-bar input,
+.chat-form input {
+  color: #ecfbff;
+  background: rgba(5, 12, 24, .72);
+  border: 1px solid rgba(137, 214, 255, .28);
+  box-shadow: inset 0 1px 8px rgba(0,0,0,.2);
+}
+
+.join-row button,
+.create-room-main,
+.ghost-button,
+.room-bar button {
+  border: 0;
+  border-radius: 14px;
+  color: #06101d;
+  background: linear-gradient(135deg, #70e8ff, #8fffd2);
+  box-shadow: 0 10px 28px rgba(47, 213, 255, .22);
+  font-weight: 900;
+}
+
+.join-row button,
+.room-bar button {
+  padding: 0 15px;
+}
+
+.skin-grid,
+.rule-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.skin-card,
+.rule-grid label {
+  min-height: 74px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 18px;
+  color: #d7f5ff;
+  background: rgba(255,255,255,.07);
+  text-align: left;
+  font-weight: 900;
+}
+
+.skin-card.active {
+  border-color: rgba(139, 233, 255, .85);
+  box-shadow: 0 0 0 3px rgba(139, 233, 255, .13), 0 0 28px rgba(83, 201, 255, .22);
+}
+
+.skin-card span {
+  display: block;
+  width: 42px;
+  height: 18px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #50d6ff, #f4c538, #33c884);
+}
+
+.skin-card[data-skin="aurora"] span {
+  background: linear-gradient(90deg, #35f4c7, #4fb7ff, #906cff);
+}
+
+.skin-card[data-skin="carbon"] span {
+  background: linear-gradient(90deg, #94a3b8, #233143, #22c55e);
+}
+
+.rule-grid label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  font-size: 13px;
+}
+
+.rule-grid input {
+  accent-color: #75f7d6;
+}
+
+.create-room-main,
+.ghost-button {
+  min-height: 54px;
+  font-size: 17px;
+}
+
+.ghost-button {
+  color: #dbf9ff;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow: none;
+}
+
+.battle-screen {
+  display: block;
+}
+
+.room-bar {
+  background: rgba(6, 14, 27, .72);
+  border-bottom: 1px solid rgba(255,255,255,.12);
+}
+
+#roomInput,
+#createRoomButton,
+#joinRoomButton {
+  display: none;
+}
+
+.game-stage {
+  background: radial-gradient(circle at 50% 12%, rgba(65, 194, 255, .2), transparent 34%);
+}
+
+.player-seat {
+  background: linear-gradient(135deg, rgba(10, 24, 46, .88), rgba(9, 16, 31, .72));
+  border-color: rgba(255,255,255,.18);
+  box-shadow: 0 18px 34px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.18);
+  backdrop-filter: blur(10px);
+}
+
+.player-seat.active {
+  animation: seatPulse 1s ease-in-out infinite;
+}
+
+@keyframes seatPulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--seat-color), 0 16px 34px rgba(0,0,0,.32); }
+  50% { box-shadow: 0 0 0 5px var(--seat-color), 0 0 34px var(--seat-color); }
+}
+
+.board-wrap {
+  border-color: rgba(126, 224, 255, .35);
+  background: linear-gradient(135deg, rgba(7, 17, 32, .95), rgba(6, 12, 23, .92));
+  box-shadow: 0 28px 70px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.1);
+}
+
+.turn-banner {
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 15px;
+  background: rgba(6, 14, 26, .66);
+  backdrop-filter: blur(10px);
+}
+
+.game-console,
+.social-panel {
+  background: linear-gradient(180deg, rgba(7, 22, 42, .94), rgba(5, 12, 24, .96));
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+
+.roll-button {
+  color: #06101d;
+  border-color: rgba(255,255,255,.42);
+  background: linear-gradient(#fff174, #ffbd34);
+}
+
+.tab.active,
+.panel,
+.message span,
+.player-editor {
+  color: #e7fbff;
+  background: rgba(255,255,255,.08);
+}
+
+.tabs {
+  border-bottom-color: rgba(255,255,255,.12);
+}
+
+.tab {
+  color: #89aeca;
+}
+
+.game-log li {
+  border-bottom-color: rgba(255,255,255,.1);
+}
+
+.winner-card,
+.dialog-card {
+  color: #e7fbff;
+  background: linear-gradient(135deg, rgba(14, 31, 57, .98), rgba(6, 13, 25, .98));
+}
+
+dialog {
+  background: transparent;
+}
+
+@media (max-width: 620px) {
+  .lobby-screen { padding: 14px; }
+  .skin-grid,
+  .rule-grid,
+  .join-row { grid-template-columns: 1fr; }
+}
