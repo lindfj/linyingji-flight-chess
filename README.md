@@ -4,6 +4,7 @@
 
 ## 功能
 
+- 联网好友房：创建房间、加入房间、跨设备实时同步
 - 四人同屏轮流游戏
 - 可修改玩家昵称
 - 聊天与快捷消息
@@ -27,4 +28,10 @@
 
 直接打开 `index.html` 即可游玩。
 
-> 跨设备互联网联机需要额外的实时服务器或云数据库支持。
+## 启用联网
+
+1. 在 Supabase 创建免费项目。
+2. 打开 SQL Editor，运行 `supabase-schema.sql`。
+3. 在 Project Settings -> API 复制 `Project URL` 和 `anon public key`。
+4. 填入 `multiplayer-config.js`。
+5. 重新上传 GitHub Pages 文件。

@@ -1,6 +1,8 @@
 const canvas = document.getElementById("gameBoard");
 const ctx = canvas.getContext("2d");
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("yj-flight-chess") : null;
+const LOCAL_STATE_KEY = "yj-flight-chess-state-v4";
+const PLAYER_ID_KEY = "yj-flight-chess-player-id";
 
 const ui = {
   actionTitle: document.getElementById("actionTitle"),
@@ -21,6 +23,22 @@ const ui = {
   chatForm: document.getElementById("chatForm"),
   chatInput: document.getElementById("chatInput"),
   rulesDialog: document.getElementById("rulesDialog"),
+  roomCode: document.getElementById("roomCode"),
+  roomInput: document.getElementById("roomInput"),
+  createRoomButton: document.getElementById("createRoomButton"),
+  joinRoomButton: document.getElementById("joinRoomButton"),
+  copyRoomButton: document.getElementById("copyRoomButton"),
+  onlineStatus: document.getElementById("onlineStatus"),
+};
+
+const multiplayer = {
+  client: null,
+  roomId: "",
+  subscription: null,
+  ready: false,
+  applyingRemote: false,
+  saveTimer: null,
+  playerId: getOrCreatePlayerId(),
 };
 
 const ROUTE_LENGTH = 52;
@@ -745,19 +763,54 @@ function findClickedPlane(event) {
   });
 }
 
-function syncState() {
-  const payload = { version: 3, state, names: players.map(player => player.name) };
-  localStorage.setItem("yj-flight-chess-state-v3", JSON.stringify(payload));
-  if (channel) channel.postMessage(payload);
+function buildSyncPayload() {
+  return {
+    version: 4,
+    state: JSON.parse(JSON.stringify(state)),
+    names: players.map(player => player.name),
+    updatedBy: multiplayer.playerId,
+    updatedAt: Date.now(),
+  };
 }
 
-function applyRemote(payload) {
-  if (!payload || payload.version !== 3 || !payload.state) return;
+function syncState() {
+  if (multiplayer.applyingRemote) return;
+  const payload = buildSyncPayload();
+  localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(payload));
+  if (channel) channel.postMessage(payload);
+  scheduleCloudSave(payload);
+}
+
+function applyRemote(payload, force = false) {
+  if (!payload || !payload.state) return;
+  if (!force && payload.updatedBy === multiplayer.playerId) return;
+  if (payload.version !== 3 && payload.version !== 4) return;
+  multiplayer.applyingRemote = true;
   Object.assign(state, payload.state, { rolling: false });
   if (payload.names) payload.names.forEach((name, index) => { players[index].name = name; });
   renderDice(state.dice);
   updateUI();
   draw();
+  localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(payload));
+  multiplayer.applyingRemote = false;
+}
+
+function scheduleCloudSave(payload = buildSyncPayload()) {
+  if (!multiplayer.ready || !multiplayer.roomId || !multiplayer.client) return;
+  clearTimeout(multiplayer.saveTimer);
+  multiplayer.saveTimer = setTimeout(() => saveRoomState(payload), 180);
+}
+
+async function saveRoomState(payload = buildSyncPayload()) {
+  if (!multiplayer.ready || !multiplayer.roomId || !multiplayer.client) return;
+  const { error } = await multiplayer.client
+    .from("rooms")
+    .upsert({
+      id: multiplayer.roomId,
+      state: payload,
+      updated_at: new Date().toISOString(),
+    });
+  if (error) setOnlineStatus(`同步失败：${error.message}`, false);
 }
 
 function escapeHtml(text) {
@@ -768,6 +821,112 @@ function escapeHtml(text) {
     '"': "&quot;",
     "'": "&#039;",
   })[char]);
+}
+
+function getOrCreatePlayerId() {
+  const saved = localStorage.getItem(PLAYER_ID_KEY);
+  if (saved) return saved;
+  const id = `p_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+  localStorage.setItem(PLAYER_ID_KEY, id);
+  return id;
+}
+
+function initMultiplayer() {
+  const config = window.YJ_SUPABASE_CONFIG || {};
+  const hasConfig = config.url && config.anonKey && window.supabase;
+  if (!hasConfig) {
+    setOnlineStatus("本地模式：未配置云端", false);
+    return;
+  }
+  multiplayer.client = window.supabase.createClient(config.url, config.anonKey);
+  setOnlineStatus("云端已就绪", true);
+
+  const urlRoom = new URLSearchParams(location.search).get("room");
+  const savedRoom = localStorage.getItem("yj-flight-chess-room");
+  if (urlRoom || savedRoom) joinRoom((urlRoom || savedRoom).toUpperCase());
+}
+
+function makeRoomId() {
+  return `YJ-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+async function createOnlineRoom() {
+  if (!ensureCloudReady()) return;
+  const roomId = makeRoomId();
+  multiplayer.roomId = roomId;
+  ui.roomInput.value = roomId;
+  updateRoomLabel();
+  await saveRoomState(buildSyncPayload());
+  await subscribeRoom(roomId);
+  localStorage.setItem("yj-flight-chess-room", roomId);
+  setOnlineStatus("房间已创建", true);
+}
+
+async function joinRoom(rawRoomId) {
+  if (!ensureCloudReady()) return;
+  const roomId = String(rawRoomId || ui.roomInput.value).trim().toUpperCase();
+  if (!roomId) {
+    setOnlineStatus("请输入房间号", false);
+    return;
+  }
+
+  multiplayer.roomId = roomId;
+  ui.roomInput.value = roomId;
+  updateRoomLabel();
+
+  const { data, error } = await multiplayer.client
+    .from("rooms")
+    .select("state")
+    .eq("id", roomId)
+    .maybeSingle();
+
+  if (error) {
+    setOnlineStatus(`加入失败：${error.message}`, false);
+    return;
+  }
+
+  if (data?.state) {
+    applyRemote(data.state, true);
+  } else {
+    await saveRoomState(buildSyncPayload());
+  }
+
+  await subscribeRoom(roomId);
+  localStorage.setItem("yj-flight-chess-room", roomId);
+  setOnlineStatus("已加入房间", true);
+}
+
+async function subscribeRoom(roomId) {
+  if (multiplayer.subscription) {
+    await multiplayer.client.removeChannel(multiplayer.subscription);
+    multiplayer.subscription = null;
+  }
+  multiplayer.ready = true;
+  multiplayer.subscription = multiplayer.client
+    .channel(`room-${roomId}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
+      event => applyRemote(event.new?.state)
+    )
+    .subscribe(status => {
+      if (status === "SUBSCRIBED") setOnlineStatus(`联机中：${roomId}`, true);
+    });
+}
+
+function ensureCloudReady() {
+  if (multiplayer.client) return true;
+  setOnlineStatus("请先填写 multiplayer-config.js 里的 Supabase 参数", false);
+  return false;
+}
+
+function setOnlineStatus(text, online) {
+  ui.onlineStatus.textContent = text;
+  ui.onlineStatus.classList.toggle("is-online", Boolean(online));
+}
+
+function updateRoomLabel() {
+  ui.roomCode.textContent = multiplayer.roomId ? `房间 ${multiplayer.roomId}` : "本地模式";
 }
 
 canvas.addEventListener("click", event => {
@@ -783,10 +942,16 @@ document.getElementById("newGameButton").addEventListener("click", () => {
 });
 document.getElementById("playAgainButton").addEventListener("click", resetGame);
 document.getElementById("rulesButton").addEventListener("click", () => ui.rulesDialog.showModal());
-document.getElementById("copyRoomButton").addEventListener("click", async event => {
-  await navigator.clipboard?.writeText("YJ-2026");
+ui.createRoomButton.addEventListener("click", createOnlineRoom);
+ui.joinRoomButton.addEventListener("click", () => joinRoom(ui.roomInput.value));
+ui.roomInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") joinRoom(ui.roomInput.value);
+});
+ui.copyRoomButton.addEventListener("click", async event => {
+  const roomText = multiplayer.roomId || ui.roomInput.value || "YJ-2026";
+  await navigator.clipboard?.writeText(roomText);
   event.currentTarget.textContent = "已复制";
-  setTimeout(() => { event.currentTarget.textContent = "复制房间号"; }, 1200);
+  setTimeout(() => { event.currentTarget.textContent = "复制"; }, 1200);
 });
 document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
   document.querySelectorAll(".tab,.panel").forEach(item => item.classList.remove("active"));
@@ -810,11 +975,14 @@ ui.playerList.addEventListener("change", event => {
 });
 if (channel) channel.addEventListener("message", event => applyRemote(event.data));
 window.addEventListener("storage", event => {
-  if (event.key === "yj-flight-chess-state-v3" && event.newValue) applyRemote(JSON.parse(event.newValue));
+  if ((event.key === LOCAL_STATE_KEY || event.key === "yj-flight-chess-state-v3") && event.newValue) {
+    applyRemote(JSON.parse(event.newValue));
+  }
 });
 
 createBoardGeometry();
-const saved = localStorage.getItem("yj-flight-chess-state-v3");
+initMultiplayer();
+const saved = localStorage.getItem(LOCAL_STATE_KEY) || localStorage.getItem("yj-flight-chess-state-v3");
 if (saved) {
   try {
     applyRemote(JSON.parse(saved));

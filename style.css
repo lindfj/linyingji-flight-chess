@@ -77,12 +77,24 @@ button { cursor: pointer; }
 .room-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 18px;
   color: #d8f6ff;
   background: rgba(0, 47, 94, .32);
   font-size: 12px;
 }
+.room-bar input {
+  width: 86px;
+  border: 1px solid rgba(255,255,255,.45);
+  border-radius: 8px;
+  padding: 5px 8px;
+  color: white;
+  background: rgba(0, 39, 79, .28);
+  outline: none;
+  text-transform: uppercase;
+}
+.room-bar input::placeholder { color: #aee5f7; }
 .online-dot {
   width: 8px;
   height: 8px;
@@ -91,11 +103,22 @@ button { cursor: pointer; }
   box-shadow: 0 0 8px #53eea0;
 }
 .room-bar button {
-  margin-left: auto;
   border: 0;
   color: #bceeff;
   background: transparent;
   font-size: 11px;
+}
+.room-bar button:first-of-type { margin-left: auto; }
+.online-status {
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #c8f5ff;
+  background: rgba(255,255,255,.1);
+  font-size: 10px;
+}
+.online-status.is-online {
+  color: #073b63;
+  background: #7df0b2;
 }
 
 .game-stage {

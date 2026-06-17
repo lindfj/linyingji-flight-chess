@@ -24,8 +24,12 @@
     <section class="room-bar">
       <span class="online-dot"></span>
       <strong>好友房</strong>
-      <span id="roomCode">房间 YJ-2026</span>
-      <button id="copyRoomButton" type="button">复制房间号</button>
+      <span id="roomCode">本地模式</span>
+      <input id="roomInput" maxlength="12" placeholder="房间号">
+      <button id="createRoomButton" type="button">创建</button>
+      <button id="joinRoomButton" type="button">加入</button>
+      <button id="copyRoomButton" type="button">复制</button>
+      <span id="onlineStatus" class="online-status">未联机</span>
     </section>
 
     <section class="game-stage">
@@ -91,7 +95,7 @@
       </div>
 
       <div id="playersPanel" class="panel">
-        <p class="edit-tip">点击昵称即可修改。本版本支持同屏四人和同浏览器多标签同步。</p>
+        <p class="edit-tip">点击昵称即可修改。配置 Supabase 后可创建房间，跨设备实时同步。</p>
         <div id="playerList" class="player-list"></div>
       </div>
     </section>
@@ -114,6 +118,8 @@
     </form>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="multiplayer-config.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
