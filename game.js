@@ -29,6 +29,7 @@ const ui = {
   joinRoomButton: document.getElementById("joinRoomButton"),
   copyRoomButton: document.getElementById("copyRoomButton"),
   onlineStatus: document.getElementById("onlineStatus"),
+  soundButton: document.getElementById("soundButton"),
 };
 
 const multiplayer = {
@@ -39,6 +40,13 @@ const multiplayer = {
   applyingRemote: false,
   saveTimer: null,
   playerId: getOrCreatePlayerId(),
+  colorIndex: null,
+  lastTurnPlayer: null,
+};
+
+const audioState = {
+  enabled: localStorage.getItem("yj-flight-chess-sound") !== "off",
+  context: null,
 };
 
 const ROUTE_LENGTH = 52;
@@ -69,6 +77,7 @@ const state = {
   round: 1,
   winner: null,
   sixStreaks: [0, 0, 0, 0],
+  playerSeats: [null, null, null, null],
   planes: [],
   logs: [],
   chats: [],
@@ -123,6 +132,7 @@ function createBoardGeometry() {
 }
 
 function resetGame(shouldSync = true) {
+  const existingSeats = Array.isArray(state.playerSeats) ? [...state.playerSeats] : [null, null, null, null];
   const openerRolls = players.map(() => 1 + Math.floor(Math.random() * 6));
   const first = openerRolls.indexOf(Math.max(...openerRolls));
   Object.assign(state, {
@@ -133,6 +143,7 @@ function resetGame(shouldSync = true) {
     round: 1,
     winner: null,
     sixStreaks: [0, 0, 0, 0],
+    playerSeats: existingSeats,
     planes: players.map((_, playerIndex) => Array.from({ length: 4 }, (_, planeIndex) => ({
       playerIndex,
       planeIndex,
@@ -148,6 +159,89 @@ function resetGame(shouldSync = true) {
   updateUI();
   draw();
   if (shouldSync) syncState();
+}
+
+function isOnlineRoom() {
+  return Boolean(multiplayer.ready && multiplayer.roomId);
+}
+
+function getOwnedColorIndex() {
+  if (!Array.isArray(state.playerSeats)) state.playerSeats = [null, null, null, null];
+  return state.playerSeats.indexOf(multiplayer.playerId);
+}
+
+function canControlPlayer(playerIndex) {
+  if (!isOnlineRoom()) return true;
+  return getOwnedColorIndex() === playerIndex;
+}
+
+function canControlCurrentTurn() {
+  return canControlPlayer(state.currentPlayer);
+}
+
+function claimSeat(preferredIndex = null) {
+  if (!Array.isArray(state.playerSeats)) state.playerSeats = [null, null, null, null];
+  const current = getOwnedColorIndex();
+  if (current >= 0) {
+    multiplayer.colorIndex = current;
+    return current;
+  }
+  const candidates = [];
+  if (Number.isInteger(preferredIndex)) candidates.push(preferredIndex);
+  candidates.push(0, 1, 2, 3);
+  const seat = candidates.find(index => index >= 0 && index < 4 && !state.playerSeats[index]);
+  if (seat === undefined) {
+    multiplayer.colorIndex = null;
+    return null;
+  }
+  state.playerSeats[seat] = multiplayer.playerId;
+  multiplayer.colorIndex = seat;
+  addLog(`${players[seat].name} 已被一名玩家认领。`, seat, false);
+  return seat;
+}
+
+function getSeatLabel(playerIndex) {
+  if (!isOnlineRoom()) return "本地";
+  if (!state.playerSeats?.[playerIndex]) return "空位";
+  if (state.playerSeats[playerIndex] === multiplayer.playerId) return "你";
+  return "玩家";
+}
+
+function setSoundEnabled(enabled) {
+  audioState.enabled = enabled;
+  localStorage.setItem("yj-flight-chess-sound", enabled ? "on" : "off");
+  ui.soundButton.textContent = enabled ? "🔊" : "🔇";
+  ui.soundButton.classList.toggle("muted", !enabled);
+}
+
+function playSound(type) {
+  if (!audioState.enabled) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  audioState.context ||= new AudioContext();
+  const ctxAudio = audioState.context;
+  const now = ctxAudio.currentTime;
+  const patterns = {
+    join: [[523, .08], [659, .11]],
+    turn: [[392, .07], [523, .12]],
+    dice: [[220, .05], [330, .05], [440, .08]],
+    move: [[330, .05], [370, .05], [415, .06]],
+    deny: [[160, .11]],
+  };
+  let offset = 0;
+  (patterns[type] || patterns.move).forEach(([frequency, duration]) => {
+    const oscillator = ctxAudio.createOscillator();
+    const gain = ctxAudio.createGain();
+    oscillator.type = type === "deny" ? "sawtooth" : "sine";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(.0001, now + offset);
+    gain.gain.exponentialRampToValueAtTime(.08, now + offset + .01);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + offset + duration);
+    oscillator.connect(gain).connect(ctxAudio.destination);
+    oscillator.start(now + offset);
+    oscillator.stop(now + offset + duration + .02);
+    offset += duration + .025;
+  });
 }
 
 function getRouteColor(absIndex) {
@@ -451,11 +545,29 @@ function showToast(text, dice = state.dice) {
   toastTimer = setTimeout(() => { ui.diceToast.hidden = true; }, 950);
 }
 
+function announceTurnChange(previousPlayer = null) {
+  if (previousPlayer === state.currentPlayer) return;
+  const current = players[state.currentPlayer];
+  if (canControlCurrentTurn()) {
+    showToast("轮到你了", state.dice);
+    playSound("turn");
+  } else {
+    showToast(`轮到 ${current.name}`, state.dice);
+  }
+  multiplayer.lastTurnPlayer = state.currentPlayer;
+}
+
 function rollDice() {
+  if (!canControlCurrentTurn()) {
+    showToast(`还没轮到你：当前是 ${players[state.currentPlayer].name}`);
+    playSound("deny");
+    return;
+  }
   if (state.rolled || state.rolling || state.winner !== null) return;
   state.rolling = true;
   updateUI();
   ui.diceButton.classList.add("rolling");
+  playSound("dice");
 
   let ticks = 0;
   const timer = setInterval(() => {
@@ -512,11 +624,17 @@ function punishTripleSix() {
 }
 
 function movePlane(plane) {
+  if (!canControlCurrentTurn()) {
+    showToast("只能操作自己的回合");
+    playSound("deny");
+    return;
+  }
   if (!state.rolled || plane.playerIndex !== state.currentPlayer || !isPlaneMovable(plane)) return;
 
   if (plane.progress === -1) {
     plane.progress = 0;
     addLog(`${players[plane.playerIndex].name} 派出一架飞机到起飞点。`, plane.playerIndex, false);
+    playSound("move");
     afterMove();
     return;
   }
@@ -528,6 +646,7 @@ function movePlane(plane) {
   }
 
   resolveLandingEffects(plane);
+  playSound("move");
   afterMove();
 }
 
@@ -667,6 +786,7 @@ function afterMove() {
 
 function nextTurn() {
   if (state.winner !== null) return;
+  const previousPlayer = state.currentPlayer;
   state.rolled = false;
   const currentIndex = state.activePlayers.indexOf(state.currentPlayer);
   const nextIndex = (currentIndex + 1) % state.activePlayers.length;
@@ -674,6 +794,7 @@ function nextTurn() {
   if (nextIndex === 0) state.round += 1;
   updateUI();
   draw();
+  announceTurnChange(previousPlayer);
   syncState();
 }
 
@@ -701,7 +822,7 @@ function renderLogs() {
   ).join("");
 }
 
-function addChat(message, playerIndex = state.currentPlayer, shouldSync = true) {
+function addChat(message, playerIndex = (getOwnedColorIndex() >= 0 ? getOwnedColorIndex() : state.currentPlayer), shouldSync = true) {
   const clean = message.trim().slice(0, 48);
   if (!clean) return;
   state.chats.push({ message: clean, playerIndex });
@@ -726,28 +847,36 @@ function renderPlayers() {
     const seat = document.getElementById(`seat${index}`);
     seat.style.setProperty("--seat-color", player.color);
     seat.classList.toggle("active", index === state.currentPlayer);
+    seat.classList.toggle("your-seat", getOwnedColorIndex() === index);
+    seat.classList.toggle("locked-seat", isOnlineRoom() && getOwnedColorIndex() !== index);
     seat.innerHTML = `<span class="avatar">${player.icon}</span>
       <strong class="seat-name">${escapeHtml(player.name)}</strong>
-      <span class="seat-score">飞行 ${flying} · 到达 ${finished}/4</span>`;
+      <span class="seat-score">${getSeatLabel(index)} · 飞行 ${flying} · 到达 ${finished}/4</span>`;
   });
   ui.playerList.innerHTML = players.map((player, index) =>
     `<label class="player-editor" style="--editor-color:${player.color}">
-      <i></i><input data-player="${index}" maxlength="10" value="${escapeHtml(player.name)}">
+      <i></i><input data-player="${index}" maxlength="10" value="${escapeHtml(player.name)}" ${isOnlineRoom() && getOwnedColorIndex() !== index ? "disabled" : ""}>
     </label>`
   ).join("");
 }
 
 function updateUI() {
   const current = players[state.currentPlayer];
+  const allowed = canControlCurrentTurn();
   ui.actionTitle.textContent = state.rolled ? `${current.name} 选择飞机` : `轮到 ${current.name}`;
-  ui.actionHint.textContent = state.rolled
-    ? `掷出 ${state.dice} 点，点击发光飞机`
-    : `连续6：${state.sixStreaks[state.currentPlayer]}/2`;
+  if (state.rolled) {
+    ui.actionHint.textContent = allowed ? `掷出 ${state.dice} 点，点击你的飞机` : `等待 ${current.name} 走棋`;
+  } else {
+    ui.actionHint.textContent = allowed ? `你的回合 · 连续6：${state.sixStreaks[state.currentPlayer]}/2` : `等待 ${current.name} 掷骰`;
+  }
   ui.roundLabel.textContent = `第 ${state.round} 回合`;
   ui.turnLabel.textContent = current.name;
-  const disabled = state.rolled || state.rolling || state.winner !== null;
+  const disabled = state.rolled || state.rolling || state.winner !== null || !allowed;
   ui.rollButton.disabled = disabled;
   ui.diceButton.disabled = disabled;
+  ui.rollButton.textContent = allowed ? "掷骰子" : "等待中";
+  ui.rollButton.classList.toggle("available", !disabled);
+  ui.diceButton.classList.toggle("available", !disabled);
   renderPlayers();
   renderLogs();
   renderChats();
@@ -785,12 +914,16 @@ function applyRemote(payload, force = false) {
   if (!payload || !payload.state) return;
   if (!force && payload.updatedBy === multiplayer.playerId) return;
   if (payload.version !== 3 && payload.version !== 4) return;
+  const previousPlayer = state.currentPlayer;
   multiplayer.applyingRemote = true;
   Object.assign(state, payload.state, { rolling: false });
+  if (!Array.isArray(state.playerSeats)) state.playerSeats = [null, null, null, null];
+  multiplayer.colorIndex = getOwnedColorIndex();
   if (payload.names) payload.names.forEach((name, index) => { players[index].name = name; });
   renderDice(state.dice);
   updateUI();
   draw();
+  if (previousPlayer !== state.currentPlayer) announceTurnChange(previousPlayer);
   localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(payload));
   multiplayer.applyingRemote = false;
 }
@@ -802,7 +935,7 @@ function scheduleCloudSave(payload = buildSyncPayload()) {
 }
 
 async function saveRoomState(payload = buildSyncPayload()) {
-  if (!multiplayer.ready || !multiplayer.roomId || !multiplayer.client) return;
+  if (!multiplayer.roomId || !multiplayer.client) return;
   const { error } = await multiplayer.client
     .from("rooms")
     .upsert({
@@ -854,12 +987,16 @@ async function createOnlineRoom() {
   if (!ensureCloudReady()) return;
   const roomId = makeRoomId();
   multiplayer.roomId = roomId;
+  state.playerSeats = [null, null, null, null];
+  claimSeat(state.currentPlayer);
   ui.roomInput.value = roomId;
   updateRoomLabel();
   await saveRoomState(buildSyncPayload());
   await subscribeRoom(roomId);
   localStorage.setItem("yj-flight-chess-room", roomId);
   setOnlineStatus("房间已创建", true);
+  playSound("join");
+  updateUI();
 }
 
 async function joinRoom(rawRoomId) {
@@ -891,9 +1028,14 @@ async function joinRoom(rawRoomId) {
     await saveRoomState(buildSyncPayload());
   }
 
+  claimSeat();
+  await saveRoomState(buildSyncPayload());
+
   await subscribeRoom(roomId);
   localStorage.setItem("yj-flight-chess-room", roomId);
   setOnlineStatus("已加入房间", true);
+  playSound("join");
+  updateUI();
 }
 
 async function subscribeRoom(roomId) {
@@ -969,9 +1111,19 @@ document.querySelectorAll(".quick-chat button").forEach(button =>
 ui.playerList.addEventListener("change", event => {
   const index = Number(event.target.dataset.player);
   if (!Number.isInteger(index)) return;
+  if (isOnlineRoom() && getOwnedColorIndex() !== index) {
+    event.target.value = players[index].name;
+    showToast("只能修改自己的昵称");
+    playSound("deny");
+    return;
+  }
   players[index].name = event.target.value.trim() || `玩家${index + 1}`;
   updateUI();
   syncState();
+});
+ui.soundButton.addEventListener("click", () => {
+  setSoundEnabled(!audioState.enabled);
+  if (audioState.enabled) playSound("join");
 });
 if (channel) channel.addEventListener("message", event => applyRemote(event.data));
 window.addEventListener("storage", event => {
@@ -981,11 +1133,12 @@ window.addEventListener("storage", event => {
 });
 
 createBoardGeometry();
+setSoundEnabled(audioState.enabled);
 initMultiplayer();
 const saved = localStorage.getItem(LOCAL_STATE_KEY) || localStorage.getItem("yj-flight-chess-state-v3");
 if (saved) {
   try {
-    applyRemote(JSON.parse(saved));
+    applyRemote(JSON.parse(saved), true);
   } catch {
     resetGame();
   }
