@@ -31,6 +31,7 @@ const ui = {
   copyRoomButton: document.getElementById("copyRoomButton"),
   onlineStatus: document.getElementById("onlineStatus"),
   soundButton: document.getElementById("soundButton"),
+  exitGameButton: document.getElementById("exitGameButton"),
   app: document.querySelector(".app"),
   lobbyScreen: document.getElementById("lobbyScreen"),
   battleScreen: document.getElementById("battleScreen"),
@@ -306,6 +307,32 @@ function takeAiSeat(index) {
   playSound("join");
   updateUI();
   syncState();
+}
+
+async function exitCurrentGameToLobby() {
+  if (isOnlineRoom()) {
+    const seat = getOwnedColorIndex();
+    if (seat >= 0) {
+      state.aiSeats[seat] = true;
+      multiplayer.colorIndex = null;
+      addLog(`${players[seat].name} 已退出，本席位由 AI 托管。`, seat, false);
+      updateUI();
+      await saveRoomState(buildSyncPayload());
+    }
+    if (multiplayer.subscription && multiplayer.client) {
+      await multiplayer.client.removeChannel(multiplayer.subscription);
+      multiplayer.subscription = null;
+    }
+  }
+  clearTimeout(multiplayer.aiTimer);
+  multiplayer.roomId = "";
+  multiplayer.ready = Boolean(multiplayer.client);
+  multiplayer.colorIndex = null;
+  localStorage.removeItem("yj-flight-chess-room");
+  ui.roomInput.value = "";
+  ui.lobbyRoomInput.value = "";
+  updateRoomLabel();
+  showScreen("lobby");
 }
 
 function getSeatLabel(playerIndex) {
@@ -1380,6 +1407,9 @@ document.getElementById("newGameButton").addEventListener("click", () => {
 });
 document.getElementById("playAgainButton").addEventListener("click", resetGame);
 document.getElementById("rulesButton").addEventListener("click", () => ui.rulesDialog.showModal());
+ui.exitGameButton.addEventListener("click", () => {
+  if (confirm("确定退出本局并交给 AI 托管吗？")) exitCurrentGameToLobby();
+});
 ui.createRoomButton.addEventListener("click", createOnlineRoom);
 ui.joinRoomButton.addEventListener("click", () => joinRoom(ui.roomInput.value));
 ui.lobbyCreateButton.addEventListener("click", createOnlineRoom);
@@ -1394,7 +1424,7 @@ ui.localDemoButton.addEventListener("click", () => {
   showScreen("battle");
   startBgm();
 });
-ui.backLobbyButton.addEventListener("click", () => showScreen("lobby"));
+ui.backLobbyButton.addEventListener("click", exitCurrentGameToLobby);
 document.querySelectorAll(".skin-card").forEach(button => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".skin-card").forEach(item => item.classList.remove("active"));
