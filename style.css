@@ -186,10 +186,10 @@ button { cursor: pointer; }
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-2px) scale(1.025); }
 }
-#seat1 { top: 11px; left: 12px; }
-#seat3 { top: 11px; right: 12px; }
-#seat2 { bottom: 88px; left: 12px; }
-#seat0 { bottom: 88px; right: 12px; }
+#seat0 { top: 11px; left: 12px; }
+#seat2 { top: 11px; right: 12px; }
+#seat3 { bottom: 88px; left: 12px; }
+#seat1 { bottom: 88px; right: 12px; }
 
 .avatar {
   grid-row: span 2;
@@ -421,7 +421,7 @@ dialog::backdrop { background: rgba(0,25,51,.7); backdrop-filter: blur(4px); }
   .seat-score { font-size: 9px; }
   .turn-banner { top: 26px; width: 145px; }
   .turn-banner strong { font-size: 12px; }
-  #seat0, #seat2 { bottom: 75px; }
+  #seat1, #seat3 { bottom: 75px; }
   .game-console { min-height: 72px; padding: 8px 13px; }
   .dice-button { width: 52px; height: 52px; }
   .dice-face { width: 39px; height: 39px; }

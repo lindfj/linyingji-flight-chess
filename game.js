@@ -119,6 +119,7 @@ const board = {
   route: [],
   homes: [],
   finishRoutes: [],
+  homeRects: [],
 };
 
 let animationFrameId = null;
@@ -151,6 +152,12 @@ function createBoardGeometry() {
     p(12, 12), // 蓝：右下
     p(12, 2),  // 黄：右上
     p(2, 12),  // 绿：左下
+  ];
+  board.homeRects = [
+    { x: 148, y: 148, playerIndex: 0 },
+    { x: 544, y: 544, playerIndex: 1 },
+    { x: 544, y: 148, playerIndex: 2 },
+    { x: 148, y: 544, playerIndex: 3 },
   ];
   const offsets = [{ x: -24, y: -24 }, { x: 24, y: -24 }, { x: -24, y: 24 }, { x: 24, y: 24 }];
   board.homes = homeCenters.map(center => offsets.map(offset => ({
@@ -473,28 +480,45 @@ function roundRect(x, y, width, height, radius, fill, stroke) {
 
 function drawBackground() {
   const gradient = ctx.createLinearGradient(0, 0, 760, 760);
-  gradient.addColorStop(0, "#ffffff");
-  gradient.addColorStop(.55, "#f7fbff");
-  gradient.addColorStop(1, "#eef6fb");
+  gradient.addColorStop(0, "#fffdf8");
+  gradient.addColorStop(.55, "#f8fcff");
+  gradient.addColorStop(1, "#eaf3fb");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 760, 760);
 
   ctx.save();
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = "rgba(8,18,32,.75)";
-  roundRect(86, 86, 588, 588, 6, null, "rgba(8,18,32,.75)");
+  ctx.shadowColor = "rgba(0,0,0,.18)";
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetY = 10;
+  roundRect(76, 76, 608, 608, 18, "rgba(255,255,255,.92)", "rgba(7,18,31,.78)");
+  ctx.shadowColor = "transparent";
+  ctx.globalAlpha = .25;
+  ctx.strokeStyle = "#b9d4e5";
+  ctx.lineWidth = 1;
+  for (let i = 112; i <= 648; i += 36) {
+    ctx.beginPath();
+    ctx.moveTo(i, 92);
+    ctx.lineTo(i, 668);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(92, i);
+    ctx.lineTo(668, i);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
 function drawHomeAreas() {
-  const homes = [
-    { x: 148, y: 148 },
-    { x: 544, y: 544 },
-    { x: 544, y: 148 },
-    { x: 148, y: 544 },
-  ];
-  homes.forEach((home, index) => {
-    roundRect(home.x, home.y, 120, 120, 10, players[index].color, "rgba(255,255,255,.72)");
+  board.homeRects.forEach(({ x, y, playerIndex: index }) => {
+    const homeGlow = ctx.createLinearGradient(x, y, x + 120, y + 120);
+    homeGlow.addColorStop(0, players[index].light);
+    homeGlow.addColorStop(.18, players[index].color);
+    homeGlow.addColorStop(1, players[index].color);
+    ctx.save();
+    ctx.shadowColor = players[index].color;
+    ctx.shadowBlur = 18;
+    roundRect(x, y, 120, 120, 14, homeGlow, "rgba(255,255,255,.86)");
+    ctx.restore();
     board.homes[index].forEach(point => {
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,.35)";
@@ -513,6 +537,14 @@ function drawHomeAreas() {
       ctx.fillText("✈", point.x, point.y + 1);
       ctx.restore();
     });
+    ctx.save();
+    ctx.globalAlpha = .9;
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 15px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(["红方", "蓝方", "黄方", "绿方"][index], x + 60, y + 112);
+    ctx.restore();
   });
 }
 
@@ -520,8 +552,8 @@ function drawTrackRibbons() {
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.lineWidth = ROUTE_CELL + 4;
-  ctx.globalAlpha = .72;
+  ctx.lineWidth = ROUTE_CELL + 8;
+  ctx.globalAlpha = .22;
   ctx.shadowColor = "rgba(0,0,0,.38)";
   ctx.shadowBlur = 8;
 
@@ -533,11 +565,12 @@ function drawTrackRibbons() {
     ctx.beginPath();
     ctx.moveTo(current.x, current.y);
     ctx.lineTo(next.x, next.y);
-    ctx.strokeStyle = players[colorOwner].color;
+    ctx.strokeStyle = "#0a2034";
     ctx.stroke();
   }
 
-  ctx.lineWidth = FINISH_DOT * 2 + 5;
+  ctx.globalAlpha = .9;
+  ctx.lineWidth = FINISH_DOT * 2 + 10;
   board.finishRoutes.forEach((route, playerIndex) => {
     const path = [...route, board.center];
     ctx.beginPath();
@@ -553,25 +586,23 @@ function drawRoute() {
   board.route.forEach((point, index) => {
     const colorOwner = getRouteColor(index);
     const isTriangle = SAFE_ABS.has(index) || isFlyEndpoint(index, colorOwner);
-    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 4, "#fffdf4", "rgba(9,24,36,.75)");
+    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 5, players[colorOwner].color, "rgba(9,24,36,.78)");
     if (isTriangle) {
-      drawTriangleCell(point, players[colorOwner].color, index);
-    } else {
-      roundRect(point.x - 11, point.y - 11, 22, 22, 5, players[colorOwner].color, "rgba(255,255,255,.22)");
+      drawTriangleCell(point, "rgba(255,255,255,.22)", index);
     }
     ctx.beginPath();
-    ctx.arc(point.x, point.y, SAFE_ABS.has(index) ? 10 : ROUTE_DOT, 0, Math.PI * 2);
-    ctx.fillStyle = "#fffbd1";
+    ctx.arc(point.x, point.y, SAFE_ABS.has(index) ? 10 : ROUTE_DOT + 1, 0, Math.PI * 2);
+    ctx.fillStyle = "#fffef2";
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = SAFE_ABS.has(index) ? "#fff" : "rgba(0,0,0,.18)";
+    ctx.strokeStyle = "rgba(255,255,255,.78)";
     ctx.stroke();
     if (SAFE_ABS.has(index)) {
-      ctx.fillStyle = players[colorOwner].color;
-      ctx.font = "bold 11px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 9px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("GO", point.x, point.y + 1);
+      ctx.fillText("GO", point.x, point.y - 18);
     }
   });
 
@@ -580,12 +611,13 @@ function drawRoute() {
       ctx.save();
       ctx.shadowColor = players[playerIndex].color;
       ctx.shadowBlur = 10;
+      roundRect(point.x - 15, point.y - 15, 30, 30, 6, players[playerIndex].color, "rgba(255,255,255,.55)");
       ctx.beginPath();
-      ctx.arc(point.x, point.y, FINISH_DOT, 0, Math.PI * 2);
-      ctx.fillStyle = index === route.length - 1 ? "#fffbd1" : players[playerIndex].light;
+      ctx.arc(point.x, point.y, index === route.length - 1 ? FINISH_DOT + 1 : FINISH_DOT, 0, Math.PI * 2);
+      ctx.fillStyle = "#fffef2";
       ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = players[playerIndex].color;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(255,255,255,.75)";
       ctx.stroke();
       ctx.restore();
     });
@@ -629,6 +661,21 @@ function drawTriangleCell(point, color, index) {
 
 function drawFlyMarkers() {
   players.forEach((player, playerIndex) => {
+    const fromPoint = board.route[getAbsoluteProgress(FLY_START_PROGRESS, playerIndex)];
+    const toPoint = board.route[getAbsoluteProgress(FLY_END_PROGRESS, playerIndex)];
+    ctx.save();
+    ctx.globalAlpha = .75;
+    ctx.strokeStyle = player.color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([5, 7]);
+    ctx.beginPath();
+    ctx.moveTo(fromPoint.x, fromPoint.y);
+    ctx.lineTo(toPoint.x, toPoint.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawSmallArrowOnLine(fromPoint, toPoint, player.color);
+    ctx.restore();
+
     [FLY_START_PROGRESS, FLY_END_PROGRESS].forEach(progress => {
       const point = board.route[getAbsoluteProgress(progress, playerIndex)];
       ctx.save();
@@ -646,12 +693,53 @@ function drawFlyMarkers() {
   });
 }
 
+function drawSmallArrowOnLine(from, to, color) {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  ctx.save();
+  ctx.translate(mid.x, mid.y);
+  ctx.rotate(angle);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-6, -6);
+  ctx.lineTo(-2, 0);
+  ctx.lineTo(-6, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawLaunchArrows() {
+  [
+    { x: 102, y: 344, direction: "right", playerIndex: 0 },
+    { x: 416, y: 102, direction: "down", playerIndex: 2 },
+    { x: 658, y: 416, direction: "left", playerIndex: 1 },
+    { x: 344, y: 658, direction: "up", playerIndex: 3 },
+  ].forEach(item => {
+    ctx.save();
+    ctx.translate(item.x, item.y);
+    ctx.rotate({ right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[item.direction]);
+    ctx.fillStyle = players[item.playerIndex].color;
+    ctx.shadowColor = players[item.playerIndex].color;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-8, -15);
+    ctx.lineTo(-8, -6);
+    ctx.lineTo(-23, -6);
+    ctx.lineTo(-23, 6);
+    ctx.lineTo(-8, 6);
+    ctx.lineTo(-8, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
 function drawCenter() {
   const { x, y } = board.center;
-  drawCenterArrow(x, y, 2, "up");
-  drawCenterArrow(x, y, 1, "right");
-  drawCenterArrow(x, y, 3, "down");
-  drawCenterArrow(x, y, 0, "left");
+  drawCenterStar(x, y);
   ctx.beginPath();
   ctx.arc(x, y, 22, 0, Math.PI * 2);
   ctx.fillStyle = "#fffbd1";
@@ -664,6 +752,29 @@ function drawCenter() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("YJ", x, y);
+}
+
+function drawCenterStar(x, y) {
+  const wedges = [
+    { playerIndex: 2, points: [[x, y], [x - 38, y - 38], [x, y - 72], [x + 38, y - 38]] },
+    { playerIndex: 1, points: [[x, y], [x + 38, y - 38], [x + 72, y], [x + 38, y + 38]] },
+    { playerIndex: 3, points: [[x, y], [x + 38, y + 38], [x, y + 72], [x - 38, y + 38]] },
+    { playerIndex: 0, points: [[x, y], [x - 38, y + 38], [x - 72, y], [x - 38, y - 38]] },
+  ];
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.28)";
+  ctx.shadowBlur = 14;
+  wedges.forEach(({ playerIndex, points }) => {
+    ctx.beginPath();
+    points.forEach(([px, py], index) => index === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+    ctx.closePath();
+    ctx.fillStyle = players[playerIndex].color;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,.82)";
+    ctx.stroke();
+  });
+  ctx.restore();
 }
 
 function drawCenterArrow(x, y, playerIndex, direction) {
@@ -704,7 +815,7 @@ function drawPlane(plane) {
   }
   ctx.save();
   ctx.translate(pos.x, pos.y);
-  ctx.rotate([-Math.PI / 2, Math.PI, Math.PI / 2, 0][plane.playerIndex]);
+  ctx.rotate([Math.PI / 2, -Math.PI / 2, Math.PI, 0][plane.playerIndex]);
   ctx.beginPath();
   ctx.moveTo(0, -18);
   ctx.quadraticCurveTo(7, -8, 5, 8);
@@ -734,6 +845,7 @@ function draw() {
   drawHomeAreas();
   drawTrackRibbons();
   drawRoute();
+  drawLaunchArrows();
   drawFlyMarkers();
   drawCenter();
   state.planes.flat().forEach(drawPlane);
