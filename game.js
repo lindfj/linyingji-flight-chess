@@ -80,7 +80,7 @@ const PLANE_RADIUS = 12;
 const players = [
   { name: "YJ队长", color: "#f1514f", light: "#ffb5ad", start: 0, icon: "Y" },
   { name: "蓝翼", color: "#137cc7", light: "#a9d4ff", start: 26, icon: "蓝" },
-  { name: "金色闪电", color: "#f4c538", light: "#ffe991", start: 13, icon: "金" },
+  { name: "金色闪电", color: "#f4c538", light: "#ffe991", start: 13, icon: "黄" },
   { name: "青空", color: "#33c884", light: "#9eefd0", start: 39, icon: "青" },
 ];
 
@@ -125,40 +125,44 @@ let animationFrameId = null;
 let toastTimer = null;
 
 function createBoardGeometry() {
-  const innerLeft = 166;
-  const innerTop = 166;
-  const innerRight = 594;
-  const innerBottom = 594;
-  const nearLeft = 190;
-  const nearTop = 190;
-  const nearRight = 570;
-  const nearBottom = 570;
-  const step = (nearRight - nearLeft) / 12;
+  const cell = 36;
+  const origin = { x: 128, y: 128 };
+  const p = (x, y) => ({ x: origin.x + x * cell, y: origin.y + y * cell });
 
-  const route = [];
-  for (let i = 0; i < 13; i += 1) route.push({ x: nearRight - step * i, y: innerBottom });
-  for (let i = 0; i < 13; i += 1) route.push({ x: innerLeft, y: nearBottom - step * i });
-  for (let i = 0; i < 13; i += 1) route.push({ x: nearLeft + step * i, y: innerTop });
-  for (let i = 0; i < 13; i += 1) route.push({ x: innerRight, y: nearTop + step * i });
-  board.route = route;
+  // 标准飞行棋52格外环：围绕四个大本营拐弯，不压住停机区。
+  board.route = [
+    p(1, 6), p(2, 6), p(3, 6), p(4, 6), p(5, 6),
+    p(6, 5), p(6, 4), p(6, 3), p(6, 2), p(6, 1), p(6, 0),
+    p(7, 0),
+    p(8, 0), p(8, 1), p(8, 2), p(8, 3), p(8, 4), p(8, 5),
+    p(9, 6), p(10, 6), p(11, 6), p(12, 6), p(13, 6), p(14, 6),
+    p(14, 7),
+    p(14, 8), p(13, 8), p(12, 8), p(11, 8), p(10, 8), p(9, 8),
+    p(8, 9), p(8, 10), p(8, 11), p(8, 12), p(8, 13), p(8, 14),
+    p(7, 14),
+    p(6, 14), p(6, 13), p(6, 12), p(6, 11), p(6, 10), p(6, 9),
+    p(5, 8), p(4, 8), p(3, 8), p(2, 8), p(1, 8), p(0, 8),
+    p(0, 7),
+    p(0, 6),
+  ];
 
   const homeCenters = [
-    { x: 645, y: 645 },
-    { x: 115, y: 115 },
-    { x: 115, y: 645 },
-    { x: 645, y: 115 },
+    p(2, 2),   // 红：左上
+    p(12, 12), // 蓝：右下
+    p(12, 2),  // 黄：右上
+    p(2, 12),  // 绿：左下
   ];
-  const offsets = [{ x: -28, y: -28 }, { x: 28, y: -28 }, { x: -28, y: 28 }, { x: 28, y: 28 }];
+  const offsets = [{ x: -24, y: -24 }, { x: 24, y: -24 }, { x: -24, y: 24 }, { x: 24, y: 24 }];
   board.homes = homeCenters.map(center => offsets.map(offset => ({
     x: center.x + offset.x,
     y: center.y + offset.y,
   })));
 
   board.finishRoutes = [
-    Array.from({ length: 6 }, (_, i) => ({ x: 594 - i * 36, y: 380 })),
-    Array.from({ length: 6 }, (_, i) => ({ x: 166 + i * 36, y: 380 })),
-    Array.from({ length: 6 }, (_, i) => ({ x: 380, y: 594 - i * 36 })),
-    Array.from({ length: 6 }, (_, i) => ({ x: 380, y: 166 + i * 36 })),
+    Array.from({ length: 6 }, (_, i) => p(1 + i, 7)),  // 红：左侧直通中心
+    Array.from({ length: 6 }, (_, i) => p(13 - i, 7)), // 蓝：右侧直通中心
+    Array.from({ length: 6 }, (_, i) => p(7, 1 + i)),  // 黄：上方直通中心
+    Array.from({ length: 6 }, (_, i) => p(7, 13 - i)), // 绿：下方直通中心
   ];
 }
 
@@ -468,58 +472,45 @@ function roundRect(x, y, width, height, radius, fill, stroke) {
 }
 
 function drawBackground() {
-  const skins = {
-    nebula: ["#10142b", "#112b4b", "#07111f"],
-    aurora: ["#0b1837", "#123e55", "#160d2f"],
-    carbon: ["#0d1017", "#18202c", "#05070b"],
-  };
-  const palette = skins[state.settings?.skin] || skins.nebula;
   const gradient = ctx.createLinearGradient(0, 0, 760, 760);
-  gradient.addColorStop(0, palette[0]);
-  gradient.addColorStop(.52, palette[1]);
-  gradient.addColorStop(1, palette[2]);
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(.55, "#f7fbff");
+  gradient.addColorStop(1, "#eef6fb");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 760, 760);
 
   ctx.save();
-  ctx.globalAlpha = .2;
-  ctx.strokeStyle = "#79d7ff";
-  ctx.lineWidth = 1;
-  for (let x = 40; x < 760; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, 760);
-    ctx.stroke();
-  }
-  for (let y = 40; y < 760; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(760, y);
-    ctx.stroke();
-  }
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(8,18,32,.75)";
+  roundRect(86, 86, 588, 588, 6, null, "rgba(8,18,32,.75)");
   ctx.restore();
 }
 
 function drawHomeAreas() {
   const homes = [
-    { x: 585, y: 585 },
-    { x: 55, y: 55 },
-    { x: 55, y: 585 },
-    { x: 585, y: 55 },
+    { x: 148, y: 148 },
+    { x: 544, y: 544 },
+    { x: 544, y: 148 },
+    { x: 148, y: 544 },
   ];
   homes.forEach((home, index) => {
-    roundRect(home.x, home.y, 120, 120, 8, "rgba(8,18,36,.86)", "rgba(255,255,255,.58)");
+    roundRect(home.x, home.y, 120, 120, 10, players[index].color, "rgba(255,255,255,.72)");
     board.homes[index].forEach(point => {
       ctx.save();
-      ctx.shadowColor = players[index].color;
-      ctx.shadowBlur = 16;
+      ctx.shadowColor = "rgba(0,0,0,.35)";
+      ctx.shadowBlur = 8;
       ctx.beginPath();
       ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
-      ctx.fillStyle = players[index].color;
+      ctx.fillStyle = "#fffbed";
       ctx.fill();
       ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(255,255,255,.78)";
+      ctx.strokeStyle = players[index].light;
       ctx.stroke();
+      ctx.fillStyle = players[index].color;
+      ctx.font = "bold 19px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("✈", point.x, point.y + 1);
       ctx.restore();
     });
   });
@@ -537,6 +528,7 @@ function drawTrackRibbons() {
   for (let index = 0; index < board.route.length; index += 1) {
     const current = board.route[index];
     const next = board.route[(index + 1) % board.route.length];
+    if (Math.hypot(current.x - next.x, current.y - next.y) > ROUTE_CELL * 2.05) continue;
     const colorOwner = getRouteColor(index);
     ctx.beginPath();
     ctx.moveTo(current.x, current.y);
@@ -561,7 +553,7 @@ function drawRoute() {
   board.route.forEach((point, index) => {
     const colorOwner = getRouteColor(index);
     const isTriangle = SAFE_ABS.has(index) || isFlyEndpoint(index, colorOwner);
-    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 6, "rgba(7,16,31,.94)", "rgba(209,241,255,.78)");
+    roundRect(point.x - ROUTE_HALF, point.y - ROUTE_HALF, ROUTE_CELL, ROUTE_CELL, 4, "#fffdf4", "rgba(9,24,36,.75)");
     if (isTriangle) {
       drawTriangleCell(point, players[colorOwner].color, index);
     } else {
@@ -579,7 +571,7 @@ function drawRoute() {
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("★", point.x, point.y + 1);
+      ctx.fillText("GO", point.x, point.y + 1);
     }
   });
 
@@ -610,7 +602,8 @@ function isFlyEndpoint(absIndex, colorOwner) {
 }
 
 function drawTriangleCell(point, color, index) {
-  const direction = index < 13 ? "up" : index < 26 ? "left" : index < 39 ? "down" : "right";
+  const safeDirections = { 0: "right", 13: "down", 26: "left", 39: "up" };
+  const direction = safeDirections[index] || (index < 13 ? "right" : index < 26 ? "down" : index < 39 ? "left" : "up");
   ctx.beginPath();
   if (direction === "up") {
     ctx.moveTo(point.x - 12, point.y + 12);
@@ -655,10 +648,10 @@ function drawFlyMarkers() {
 
 function drawCenter() {
   const { x, y } = board.center;
-  drawCenterArrow(x, y, 3, "up");
-  drawCenterArrow(x, y, 0, "right");
-  drawCenterArrow(x, y, 2, "down");
-  drawCenterArrow(x, y, 1, "left");
+  drawCenterArrow(x, y, 2, "up");
+  drawCenterArrow(x, y, 1, "right");
+  drawCenterArrow(x, y, 3, "down");
+  drawCenterArrow(x, y, 0, "left");
   ctx.beginPath();
   ctx.arc(x, y, 22, 0, Math.PI * 2);
   ctx.fillStyle = "#fffbd1";
